@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Xcode / SwiftPM build artifacts
+DerivedData/
+.build/
+.swiftpm/
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+
+# Build/debug/profiling outputs
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.profraw
+default.profraw
+
+# Logs and generated reports
+*.log
+report/
+
+# Optional dependency managers
+Carthage/Build/
+Pods/
