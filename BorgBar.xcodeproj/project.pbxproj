@@ -7,10 +7,22 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		08DE3FD3BB17ED2A4FF482AF /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72B218FCCE280B27C9F173A /* main.swift */; };
+		42A664839410F9447B6225BB /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A1DE27E0286D37F46977E3A /* Cocoa.framework */; };
+		5F522BD374A57CFEFC1B2580 /* PrivilegedHelperProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B56AC5E198EE54033A9ECBAB /* PrivilegedHelperProtocol.swift */; };
+		68773E484EE2AFBA1D65C7E0 /* com.da.borgbar.helper in Copy Privileged Helper */ = {isa = PBXBuildFile; fileRef = 5C7C90C46495FC559AB1A906 /* com.da.borgbar.helper */; };
 		8B90D1482DEDD44A00FBD189 /* BorgBarFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 8B90D1472DEDD44A00FBD189 /* BorgBarFeature */; };
+		DFA361470172A459228BC5A7 /* com.da.borgbar.helper.plist in Copy LaunchDaemon Plist */ = {isa = PBXBuildFile; fileRef = 443E0BDA1B1D54AC1B5F926D /* com.da.borgbar.helper.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		809BBE533CFDBB1F69BE5C72 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8BC265542DEDD3F400F279A4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1FCDFF3C3719B8F3F43D6BB0;
+			remoteInfo = BorgBarPrivilegedHelper;
+		};
 		8BC265752DEDD3F500F279A4 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8BC265542DEDD3F400F279A4 /* Project object */;
@@ -20,9 +32,40 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		7B5CC62CF928CBAE0FE7254E /* Copy LaunchDaemon Plist */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchDaemons;
+			dstSubfolderSpec = 1;
+			files = (
+				DFA361470172A459228BC5A7 /* com.da.borgbar.helper.plist in Copy LaunchDaemon Plist */,
+			);
+			name = "Copy LaunchDaemon Plist";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A4894EBF4B70F3FCC44DF728 /* Copy Privileged Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/HelperTools;
+			dstSubfolderSpec = 1;
+			files = (
+				68773E484EE2AFBA1D65C7E0 /* com.da.borgbar.helper in Copy Privileged Helper */,
+			);
+			name = "Copy Privileged Helper";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		0A1DE27E0286D37F46977E3A /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		443E0BDA1B1D54AC1B5F926D /* com.da.borgbar.helper.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = com.da.borgbar.helper.plist; path = PrivilegedHelper/com.da.borgbar.helper.plist; sourceTree = "<group>"; };
+		5C7C90C46495FC559AB1A906 /* com.da.borgbar.helper */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "compiled.mach-o.executable"; path = com.da.borgbar.helper; sourceTree = BUILT_PRODUCTS_DIR; };
+		6AA09947E3DE6F30B3123A4D /* Helper-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "Helper-Info.plist"; path = "PrivilegedHelper/Helper-Info.plist"; sourceTree = "<group>"; };
 		8BC2655C2DEDD3F400F279A4 /* BorgBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BorgBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8BC265742DEDD3F500F279A4 /* BorgBar.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BorgBar.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B56AC5E198EE54033A9ECBAB /* PrivilegedHelperProtocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PrivilegedHelperProtocol.swift; path = PrivilegedHelper/PrivilegedHelperProtocol.swift; sourceTree = "<group>"; };
+		C72B218FCCE280B27C9F173A /* main.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = main.swift; path = PrivilegedHelper/main.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -33,6 +76,7 @@
 				Release.xcconfig,
 				Shared.xcconfig,
 				Tests.xcconfig,
+				Info.plist,
 			);
 			target = 8BC2655B2DEDD3F400F279A4 /* BorgBar */;
 		};
@@ -49,11 +93,15 @@
 		};
 		8BC2655E2DEDD3F400F279A4 /* BorgBar */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = BorgBar;
 			sourceTree = "<group>";
 		};
 		8BC265772DEDD3F500F279A4 /* BorgBarUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = BorgBarUITests;
 			sourceTree = "<group>";
 		};
@@ -75,12 +123,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A046E21BEA952116B82DA2E2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				42A664839410F9447B6225BB /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		8A462FAF9D4FC225AF587F98 /* PrivilegedHelper */ = {
+			isa = PBXGroup;
+			children = (
+				C72B218FCCE280B27C9F173A /* main.swift */,
+				B56AC5E198EE54033A9ECBAB /* PrivilegedHelperProtocol.swift */,
+				6AA09947E3DE6F30B3123A4D /* Helper-Info.plist */,
+				443E0BDA1B1D54AC1B5F926D /* com.da.borgbar.helper.plist */,
+			);
+			name = PrivilegedHelper;
+			sourceTree = "<group>";
+		};
 		8B90D1462DEDD44A00FBD189 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				C4EC753B1AEB80353A92796B /* OS X */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -93,6 +161,7 @@
 				8BC265772DEDD3F500F279A4 /* BorgBarUITests */,
 				8B90D1462DEDD44A00FBD189 /* Frameworks */,
 				8BC2655D2DEDD3F400F279A4 /* Products */,
+				8A462FAF9D4FC225AF587F98 /* PrivilegedHelper */,
 			);
 			sourceTree = "<group>";
 		};
@@ -101,13 +170,39 @@
 			children = (
 				8BC2655C2DEDD3F400F279A4 /* BorgBar.app */,
 				8BC265742DEDD3F500F279A4 /* BorgBar.xctest */,
+				5C7C90C46495FC559AB1A906 /* com.da.borgbar.helper */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C4EC753B1AEB80353A92796B /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				0A1DE27E0286D37F46977E3A /* Cocoa.framework */,
+			);
+			name = "OS X";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		1FCDFF3C3719B8F3F43D6BB0 /* BorgBarPrivilegedHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 45A5F966F42325827C1365AB /* Build configuration list for PBXNativeTarget "BorgBarPrivilegedHelper" */;
+			buildPhases = (
+				6A3174E782434BA7E7B61F6C /* Sources */,
+				A046E21BEA952116B82DA2E2 /* Frameworks */,
+				525B86AB4B8E82058AB184AC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BorgBarPrivilegedHelper;
+			productName = BorgBarPrivilegedHelper;
+			productReference = 5C7C90C46495FC559AB1A906 /* com.da.borgbar.helper */;
+			productType = "com.apple.product-type.tool";
+		};
 		8BC2655B2DEDD3F400F279A4 /* BorgBar */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8BC2657E2DEDD3F500F279A4 /* Build configuration list for PBXNativeTarget "BorgBar" */;
@@ -115,10 +210,13 @@
 				8BC265582DEDD3F400F279A4 /* Sources */,
 				8BC265592DEDD3F400F279A4 /* Frameworks */,
 				8BC2655A2DEDD3F400F279A4 /* Resources */,
+				A4894EBF4B70F3FCC44DF728 /* Copy Privileged Helper */,
+				7B5CC62CF928CBAE0FE7254E /* Copy LaunchDaemon Plist */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F4BE2C82695E94B58D46CC31 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8B90D1BC2DEE373300FBD189 /* Config */,
@@ -149,8 +247,6 @@
 				8BC265772DEDD3F500F279A4 /* BorgBarUITests */,
 			);
 			name = BorgBarUITests;
-			packageProductDependencies = (
-			);
 			productName = BorgBarUITests;
 			productReference = 8BC265742DEDD3F500F279A4 /* BorgBar.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -191,11 +287,19 @@
 			targets = (
 				8BC2655B2DEDD3F400F279A4 /* BorgBar */,
 				8BC265732DEDD3F500F279A4 /* BorgBarUITests */,
+				1FCDFF3C3719B8F3F43D6BB0 /* BorgBarPrivilegedHelper */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		525B86AB4B8E82058AB184AC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8BC2655A2DEDD3F400F279A4 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -213,6 +317,15 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		6A3174E782434BA7E7B61F6C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				08DE3FD3BB17ED2A4FF482AF /* main.swift in Sources */,
+				5F522BD374A57CFEFC1B2580 /* PrivilegedHelperProtocol.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8BC265582DEDD3F400F279A4 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -235,9 +348,34 @@
 			target = 8BC2655B2DEDD3F400F279A4 /* BorgBar */;
 			targetProxy = 8BC265752DEDD3F500F279A4 /* PBXContainerItemProxy */;
 		};
+		F4BE2C82695E94B58D46CC31 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = BorgBarPrivilegedHelper;
+			target = 1FCDFF3C3719B8F3F43D6BB0 /* BorgBarPrivilegedHelper */;
+			targetProxy = 809BBE533CFDBB1F69BE5C72 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		367CF23AFB277BF1E8D39FFB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_IDENTITY = "Apple Development: d-arndt@posteo.de (K3M2A6WTSH)";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = Q9QK5E2S4V;
+				EXECUTABLE_NAME = com.da.borgbar.helper;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "PrivilegedHelper/Helper-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.da.borgbar.helper;
+				PRODUCT_NAME = com.da.borgbar.helper;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
 		8BC2657C2DEDD3F500F279A4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -252,28 +390,28 @@
 			};
 			name = Release;
 		};
-			8BC2657F2DEDD3F500F279A4 /* Debug */ = {
-				isa = XCBuildConfiguration;
-				baseConfigurationReferenceAnchor = 8B90D1BC2DEE373300FBD189 /* Config */;
-				baseConfigurationReferenceRelativePath = Debug.xcconfig;
-				buildSettings = {
-					INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_DISPLAY_NAME)";
-					INFOPLIST_KEY_LSUIElement = YES;
-					SWIFT_VERSION = 5.0;
-				};
-				name = Debug;
+		8BC2657F2DEDD3F500F279A4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8B90D1BC2DEE373300FBD189 /* Config */;
+			baseConfigurationReferenceRelativePath = Debug.xcconfig;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "BorgBar-App-Info.plist";
+				SWIFT_VERSION = 5.0;
 			};
-			8BC265802DEDD3F500F279A4 /* Release */ = {
-				isa = XCBuildConfiguration;
-				baseConfigurationReferenceAnchor = 8B90D1BC2DEE373300FBD189 /* Config */;
-				baseConfigurationReferenceRelativePath = Release.xcconfig;
-				buildSettings = {
-					INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_DISPLAY_NAME)";
-					INFOPLIST_KEY_LSUIElement = YES;
-					SWIFT_VERSION = 5.0;
-				};
-				name = Release;
+			name = Debug;
+		};
+		8BC265802DEDD3F500F279A4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8B90D1BC2DEE373300FBD189 /* Config */;
+			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "BorgBar-App-Info.plist";
+				SWIFT_VERSION = 5.0;
 			};
+			name = Release;
+		};
 		8BC265852DEDD3F500F279A4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 8B90D1BC2DEE373300FBD189 /* Config */;
@@ -292,9 +430,37 @@
 			};
 			name = Release;
 		};
+		E553B8AC2BBCFC09639432E9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_IDENTITY = "Apple Development: d-arndt@posteo.de (K3M2A6WTSH)";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = Q9QK5E2S4V;
+				EXECUTABLE_NAME = com.da.borgbar.helper;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "PrivilegedHelper/Helper-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.da.borgbar.helper;
+				PRODUCT_NAME = com.da.borgbar.helper;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		45A5F966F42325827C1365AB /* Build configuration list for PBXNativeTarget "BorgBarPrivilegedHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E553B8AC2BBCFC09639432E9 /* Release */,
+				367CF23AFB277BF1E8D39FFB /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		8BC265572DEDD3F400F279A4 /* Build configuration list for PBXProject "BorgBar" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

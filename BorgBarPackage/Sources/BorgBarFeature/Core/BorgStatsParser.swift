@@ -26,14 +26,28 @@ public enum BorgStatsParser {
 
     public static func parseRepositorySizeBytes(from output: String) -> Int64? {
         let pattern = #"(?m)^Repository size:\s+((?:[0-9][0-9.,]*|Zero)\s*(?:[KMGTPE]i?)?B)\s*$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(output.startIndex..<output.endIndex, in: output)
-        guard let match = regex.firstMatch(in: output, range: range),
-              match.numberOfRanges >= 2,
-              let valueRange = Range(match.range(at: 1), in: output) else {
+        if let regex = try? NSRegularExpression(pattern: pattern) {
+            let range = NSRange(output.startIndex..<output.endIndex, in: output)
+            if let match = regex.firstMatch(in: output, range: range),
+               match.numberOfRanges >= 2,
+               let valueRange = Range(match.range(at: 1), in: output) {
+                return parseHumanBytes(String(output[valueRange]))
+            }
+        }
+
+        // Borg 1.x commonly omits "Repository size". Fall back to all-archives deduplicated bytes.
+        return parseArchiveSummary(from: output).allArchivesDeduplicatedBytes
+    }
+
+    public static func parseRepositorySizeBytesFromJSON(_ output: String) -> Int64? {
+        guard let data = output.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(BorgInfoPayload.self, from: data) else {
             return nil
         }
-        return parseHumanBytes(String(output[valueRange]))
+
+        // "unique_csize" best represents deduplicated repository data in storage.
+        // Fall back to total compressed size when unique value is unavailable.
+        return payload.cache?.stats?.uniqueCompressedSizeBytes ?? payload.cache?.stats?.totalCompressedSizeBytes
     }
 
     private static func captureThreeColumns(pattern: String, in output: String) -> [String]? {
@@ -111,5 +125,23 @@ public enum BorgStatsParser {
             return nil
         }
         return Int64((number * multiplier).rounded())
+    }
+}
+
+private struct BorgInfoPayload: Decodable {
+    let cache: BorgInfoCache?
+}
+
+private struct BorgInfoCache: Decodable {
+    let stats: BorgInfoStats?
+}
+
+private struct BorgInfoStats: Decodable {
+    let uniqueCompressedSizeBytes: Int64?
+    let totalCompressedSizeBytes: Int64?
+
+    private enum CodingKeys: String, CodingKey {
+        case uniqueCompressedSizeBytes = "unique_csize"
+        case totalCompressedSizeBytes = "total_csize"
     }
 }

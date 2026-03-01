@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private let model = BorgBarModel()
+    private let terminationPolicy = AppTerminationPolicy()
     private var terminationInFlight = false
     private var settingsWindow: NSWindow?
 
@@ -74,8 +75,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard !terminationInFlight else { return .terminateCancel }
-        guard model.orchestrator.isRunning else { return .terminateNow }
+        switch terminationPolicy.startDecision(
+            terminationInFlight: terminationInFlight,
+            backupRunning: model.orchestrator.isRunning
+        ) {
+        case .terminateNow:
+            return .terminateNow
+        case .terminateCancel:
+            return .terminateCancel
+        case .needsUserConfirmation:
+            break
+        }
 
         let confirm = NSAlert()
         confirm.alertStyle = .warning
@@ -107,7 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             force.addButton(withTitle: "Keep Running")
             NSApp.activate(ignoringOtherApps: true)
             let forceResponse = force.runModal()
-            let shouldQuit = forceResponse == .alertFirstButtonReturn
+            let shouldQuit = terminationPolicy.shouldQuitAfterForceChoice(
+                userChoseForceQuit: forceResponse == .alertFirstButtonReturn
+            )
             if !shouldQuit {
                 terminationInFlight = false
             }

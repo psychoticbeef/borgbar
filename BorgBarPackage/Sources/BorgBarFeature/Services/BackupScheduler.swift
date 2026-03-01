@@ -3,9 +3,8 @@ import Foundation
 @MainActor
 public final class BackupScheduler: ObservableObject {
     private var timer: Timer?
-    private let orchestrator: BackupOrchestrator
-    private let configStore: ConfigStore
-    private let historyStore: HistoryStore
+    private let integration: BackupSchedulerIntegrationPort
+    private let evaluator: BackupScheduleEvaluator
     private var lastTriggeredDay: String?
 
     public init(
@@ -13,9 +12,20 @@ public final class BackupScheduler: ObservableObject {
         configStore: ConfigStore = ConfigStore(),
         historyStore: HistoryStore = HistoryStore()
     ) {
-        self.orchestrator = orchestrator
-        self.configStore = configStore
-        self.historyStore = historyStore
+        self.integration = DefaultBackupSchedulerIntegrationPort(
+            orchestrator: orchestrator,
+            configStore: configStore,
+            historyStore: historyStore
+        )
+        self.evaluator = BackupScheduleEvaluator()
+    }
+
+    init(
+        integration: BackupSchedulerIntegrationPort,
+        evaluator: BackupScheduleEvaluator = BackupScheduleEvaluator()
+    ) {
+        self.integration = integration
+        self.evaluator = evaluator
     }
 
     public func start() {
@@ -34,36 +44,27 @@ public final class BackupScheduler: ObservableObject {
     }
 
     private func tick() async {
-        guard !orchestrator.isRunning else { return }
-        guard let config = try? await configStore.load() else { return }
-
-        let parts = config.schedule.dailyTime.split(separator: ":")
-        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return }
+        guard !integration.isBackupRunning() else { return }
+        guard let dailyTime = await integration.loadScheduleDailyTime() else { return }
 
         let now = Date()
-        let calendar = Calendar.current
-        let dayKey = "\(calendar.component(.year, from: now))-\(calendar.component(.month, from: now))-\(calendar.component(.day, from: now))"
-        if dayKey == lastTriggeredDay { return }
-
-        let runTime = calendar.date(
-            bySettingHour: hour,
-            minute: minute,
-            second: 0,
-            of: now
-        ) ?? now
-
-        if now >= runTime {
-            if await hasCompletedRunToday(referenceDate: now) {
-                lastTriggeredDay = dayKey
-                return
-            }
+        let records = await integration.loadHistory()
+        let completedToday = hasCompletedRunToday(records: records, referenceDate: now)
+        let decision = evaluator.evaluate(
+            dailyTime: dailyTime,
+            now: now,
+            lastTriggeredDay: lastTriggeredDay,
+            hasCompletedRunToday: completedToday
+        )
+        if let dayKey = decision.updatedLastTriggeredDay {
             lastTriggeredDay = dayKey
-            orchestrator.startScheduledRun()
+        }
+        if decision.shouldTrigger {
+            integration.startScheduledRun()
         }
     }
 
-    private func hasCompletedRunToday(referenceDate: Date) async -> Bool {
-        guard let records = try? await historyStore.load() else { return false }
+    private func hasCompletedRunToday(records: [BackupRunRecord], referenceDate: Date) -> Bool {
         let calendar = Calendar.current
         return records.contains { record in
             guard calendar.isDate(record.startedAt, inSameDayAs: referenceDate) else {
@@ -73,11 +74,8 @@ public final class BackupScheduler: ObservableObject {
                 return true
             }
             // Backward-compat: older runs could be marked failed despite a completed archive summary.
-            if record.summary.contains("Archive fingerprint:"),
-               record.summary.contains("Time (end):") {
-                return true
-            }
-            return false
+            return record.summary.contains("Archive fingerprint:")
+                && record.summary.contains("Time (end):")
         }
     }
 }

@@ -1,28 +1,39 @@
 import Foundation
 
 public actor TimeMachineExclusionService {
-    private let runner: CommandRunner
-    private let fileManager: FileManager
+    private let integration: TimeMachineExclusionIntegrationPort
+    private let directoryCollector: TimeMachineDirectoryCollectorPort
     private var traversalExclusionCache: [String: Bool] = [:]
 
     public init(
         runner: CommandRunner = CommandRunner(),
         fileManager: FileManager = .default
     ) {
-        self.runner = runner
-        self.fileManager = fileManager
+        self.integration = TMExclusionIntegrationAdapter(runner: runner)
+        self.directoryCollector = DefaultTimeMachineDirectoryCollectorPort(fileManager: fileManager)
+    }
+
+    init(
+        integration: TimeMachineExclusionIntegrationPort,
+        directoryCollector: TimeMachineDirectoryCollectorPort = DefaultTimeMachineDirectoryCollectorPort()
+    ) {
+        self.integration = integration
+        self.directoryCollector = directoryCollector
     }
 
     public func refreshIfNeeded(config: AppConfig) throws -> (config: AppConfig, didUpdate: Bool) {
-        let currentVersion = macOSVersionString()
+        let currentVersion = integration.osVersionString()
         if config.repo.timeMachineExclusionOSVersion == currentVersion {
             return (config, false)
         }
         traversalExclusionCache.removeAll(keepingCapacity: true)
 
-        let candidates = collectRelevantDirectories(
+        let candidates = directoryCollector.collectRelevantDirectories(
             includePaths: config.repo.includePaths,
-            defaultPatterns: config.repo.commonSenseExcludePatterns
+            defaultPatterns: config.repo.commonSenseExcludePatterns,
+            isExcludedProbe: { path in
+                self.isExcludedForTraversal(path: path)
+            }
         )
         let excluded = try queryExcludedPaths(from: candidates)
 
@@ -33,103 +44,12 @@ public actor TimeMachineExclusionService {
         return (updated, true)
     }
 
-    private func macOSVersionString() -> String {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        return "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-    }
-
-    private func collectRelevantDirectories(
-        includePaths: [String],
-        defaultPatterns: [String]
-    ) -> [String] {
-        let maxDepth = 3
-        var paths = Set<String>()
-        for include in includePaths {
-            let root = expanded(include)
-            guard isDirectory(root) else { continue }
-
-            let normalizedRoot = normalized(root)
-            if !isCoveredByDefaultPatterns(path: normalizedRoot, defaultPatterns: defaultPatterns) {
-                paths.insert(normalizedRoot)
-            }
-            addDirectoriesRecursively(
-                under: root,
-                maxDepth: maxDepth,
-                defaultPatterns: defaultPatterns,
-                into: &paths
-            )
-        }
-        AppLogger.info("Time Machine exclusion candidate directories: \(paths.count)")
-        return paths.sorted()
-    }
-
-    private func addDirectoriesRecursively(
-        under rootPath: String,
-        maxDepth: Int,
-        defaultPatterns: [String],
-        into paths: inout Set<String>
-    ) {
-        var skippedCount = 0
-
-        let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
-        let rootDepth = rootURL.pathComponents.count
-        guard let enumerator = fileManager.enumerator(
-            at: rootURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey],
-            options: [.skipsPackageDescendants],
-            errorHandler: { _, _ in
-                skippedCount += 1
-                return true
-            }
-        ) else { return }
-
-        for case let url as URL in enumerator {
-            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey])
-            if values?.isSymbolicLink == true {
-                enumerator.skipDescendants()
-                continue
-            }
-            guard values?.isDirectory == true else { continue }
-
-            let depth = url.pathComponents.count - rootDepth
-            if depth > maxDepth {
-                enumerator.skipDescendants()
-                continue
-            }
-            if values?.isPackage == true {
-                enumerator.skipDescendants()
-            }
-
-            let normalizedPath = normalized(url.path)
-            if isCoveredByDefaultPatterns(path: normalizedPath, defaultPatterns: defaultPatterns) {
-                enumerator.skipDescendants()
-                continue
-            }
-            // Probe shallow directories and prune recursion for branches TM already excludes.
-            if depth <= 2, isExcludedForTraversal(path: normalizedPath) {
-                paths.insert(normalizedPath)
-                enumerator.skipDescendants()
-                continue
-            }
-
-            paths.insert(normalizedPath)
-        }
-
-        if skippedCount > 0 {
-            AppLogger.info("Time Machine exclusion scan skipped \(skippedCount) unreadable paths under \(rootPath)")
-        }
-    }
-
     private func isExcludedForTraversal(path: String) -> Bool {
         if let cached = traversalExclusionCache[path] {
             return cached
         }
         do {
-            let result = try runner.run(
-                executable: "/usr/bin/tmutil",
-                arguments: ["isexcluded", "-X", path],
-                timeoutSeconds: 20
-            )
+            let result = try integration.runIsExcluded(paths: [path], timeoutSeconds: 20)
             guard result.exitCode == 0 else {
                 traversalExclusionCache[path] = false
                 return false
@@ -154,15 +74,8 @@ public actor TimeMachineExclusionService {
         var failedPaths: [String] = []
 
         for chunk in candidates.chunked(into: 20) {
-            var args = ["isexcluded", "-X"]
-            args.append(contentsOf: chunk)
-
             do {
-                let result = try runner.run(
-                    executable: "/usr/bin/tmutil",
-                    arguments: args,
-                    timeoutSeconds: 300
-                )
+                let result = try integration.runIsExcluded(paths: chunk, timeoutSeconds: 300)
                 guard result.exitCode == 0 else {
                     failedChunks += 1
                     failedPaths.append(contentsOf: chunk)
@@ -206,11 +119,7 @@ public actor TimeMachineExclusionService {
         let unique = Array(Set(paths)).sorted()
         for path in unique {
             do {
-                let result = try runner.run(
-                    executable: "/usr/bin/tmutil",
-                    arguments: ["isexcluded", "-X", path],
-                    timeoutSeconds: 15
-                )
+                let result = try integration.runIsExcluded(paths: [path], timeoutSeconds: 15)
                 guard result.exitCode == 0 else { continue }
                 let normalizedPath = normalized(path)
                 if parseExcludedPaths(plistXML: result.stdout).contains(normalizedPath) {
@@ -246,21 +155,6 @@ public actor TimeMachineExclusionService {
         NSString(string: path).standardizingPath
     }
 
-    private func isCoveredByDefaultPatterns(path: String, defaultPatterns: [String]) -> Bool {
-        PathPatternMatcher.isCoveredByDefaultPatterns(path: path, defaultPatterns: defaultPatterns)
-    }
-
-    private func expanded(_ value: String) -> String {
-        NSString(string: value).expandingTildeInPath
-    }
-
-    private func isDirectory(_ path: String) -> Bool {
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
-            return false
-        }
-        return isDirectory.boolValue
-    }
 }
 
 private extension Array {

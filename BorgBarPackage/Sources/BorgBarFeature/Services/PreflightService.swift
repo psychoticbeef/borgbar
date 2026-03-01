@@ -9,16 +9,24 @@ public enum PreflightService {
         keychain: KeychainService,
         onReachabilityRetry: (@Sendable (String) -> Void)? = nil
     ) async throws {
-        let fileManager = FileManager.default
-        guard fileManager.isExecutableFile(atPath: expanded(config.paths.borgPath)) else {
+        let integration = DefaultPreflightIntegrationPort(keychain: keychain)
+        try await run(config: config, integration: integration, onReachabilityRetry: onReachabilityRetry)
+    }
+
+    static func run(
+        config: AppConfig,
+        integration: PreflightIntegrationPort,
+        onReachabilityRetry: (@Sendable (String) -> Void)? = nil
+    ) async throws {
+        guard integration.isExecutableFile(atPath: expanded(config.paths.borgPath)) else {
             throw BackupError.preflightFailed("borg executable not found at \(config.paths.borgPath)")
         }
 
-        guard fileManager.fileExists(atPath: expanded(config.repo.sshKeyPath)) else {
+        guard integration.fileExists(atPath: expanded(config.repo.sshKeyPath)) else {
             throw BackupError.preflightFailed("SSH key not found at \(config.repo.sshKeyPath)")
         }
 
-        guard await keychain.hasPassphrase(repoID: config.repo.id) else {
+        guard await integration.hasPassphrase(repoID: config.repo.id) else {
             throw BackupError.preflightFailed("Keychain item borgbar-repo-\(config.repo.id) is missing")
         }
 
@@ -26,6 +34,7 @@ public enum PreflightService {
             try await probeReachability(
                 host: endpoint.host,
                 port: endpoint.port,
+                integration: integration,
                 onRetry: onReachabilityRetry
             )
         }
@@ -45,9 +54,9 @@ public enum PreflightService {
     private static func probeReachability(
         host: String,
         port: Int,
+        integration: PreflightIntegrationPort,
         onRetry: (@Sendable (String) -> Void)?
     ) async throws {
-        let runner = CommandRunner()
         var firstFailureAt: Date?
         var lastError = "unknown error"
         var attempt = 0
@@ -57,11 +66,7 @@ public enum PreflightService {
             attempt += 1
 
             do {
-                let result = try runner.run(
-                    executable: "/usr/bin/nc",
-                    arguments: ["-z", "-G", "5", host, String(port)],
-                    timeoutSeconds: 8
-                )
+                let result = try integration.runReachabilityProbe(host: host, port: port)
                 if result.exitCode == 0 {
                     if attempt > 1 {
                         AppLogger.info("Reachability probe recovered for \(host):\(port) on attempt \(attempt)")

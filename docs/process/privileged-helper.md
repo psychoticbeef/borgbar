@@ -2,24 +2,21 @@
 
 BorgBar snapshot operations require root privileges.
 
-This project uses a small setuid-root helper binary that is installed once, then reused without repeated password prompts.
+This project uses a signed privileged helper daemon (`com.da.borgbar.helper`)
+managed through `SMAppService` from inside the app.
 
 ## Install (one-time)
 
-```bash
-cd /Users/da/code/BorgBar
-sudo ./scripts/install_privileged_helper.sh
-```
-
-## Uninstall
-
-```bash
-cd /Users/da/code/BorgBar
-sudo ./scripts/uninstall_privileged_helper.sh
-```
+Use the app UI:
+1. Open `Settings`
+2. Go to `Security`
+3. Click `Install Helper`
 
 ## Notes
 
-- Helper path: `/usr/local/libexec/borgbar-helper`
-- Allowed commands are restricted to snapshot lifecycle operations plus wake scheduling (`tmutil`, `mount_apfs`, `umount`, constrained `pmset`).
-- BorgBar will fail with an explicit error if helper is missing.
+- Helper service label: `com.da.borgbar.helper`
+- Bundled daemon plist: `PrivilegedHelper/com.da.borgbar.helper.plist`
+- Helper executable is embedded under app bundle `Contents/Library/HelperTools`
+- Allowed commands are restricted to snapshot lifecycle operations plus wake
+  scheduling (`tmutil`, `mount_apfs`, `umount`, constrained `pmset`).
+- BorgBar will fail with an explicit error if helper is missing/unregistered.

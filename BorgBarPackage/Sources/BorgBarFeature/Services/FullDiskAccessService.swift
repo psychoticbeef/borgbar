@@ -65,68 +65,12 @@ public actor FullDiskAccessService {
     }
 
     public func diagnostics() -> FullDiskAccessDiagnostics {
-        let tmutilProbe = probeWithTmutil()
-        var probes: [FullDiskAccessProbe] = []
-        probes.reserveCapacity(probePaths.count + 1)
-        switch tmutilProbe {
-        case .accessible:
-            probes.append(FullDiskAccessProbe(path: "tmutil isexcluded -X ~", state: .accessible, detail: nil))
-        case .permissionDenied(let detail):
-            return FullDiskAccessDiagnostics(
-                granted: false,
-                probes: [FullDiskAccessProbe(path: "tmutil isexcluded -X ~", state: .permissionDenied, detail: detail)]
-            )
-        case .missing:
-            probes.append(FullDiskAccessProbe(path: "tmutil isexcluded -X ~", state: .missing, detail: nil))
-        case .otherError(let detail):
-            probes.append(FullDiskAccessProbe(path: "tmutil isexcluded -X ~", state: .otherError, detail: detail))
+        let tmutil = tmutilProbeDiagnostic()
+        if tmutil.state == .permissionDenied {
+            return FullDiskAccessDiagnosticsEvaluator.evaluate(tmutilProbe: tmutil, pathProbes: [])
         }
-
-        var existingProbeCount = 0
-        var sawPermissionDenied = false
-        var sawAccessible = false
-
-        for raw in probePaths {
-            let expanded = expand(raw)
-            switch probe(path: expanded) {
-            case .accessible:
-                existingProbeCount += 1
-                sawAccessible = true
-                probes.append(
-                    FullDiskAccessProbe(path: expanded, state: .accessible, detail: nil)
-                )
-            case .permissionDenied(let detail):
-                existingProbeCount += 1
-                sawPermissionDenied = true
-                probes.append(
-                    FullDiskAccessProbe(path: expanded, state: .permissionDenied, detail: detail)
-                )
-            case .missing:
-                probes.append(
-                    FullDiskAccessProbe(path: expanded, state: .missing, detail: nil)
-                )
-                continue
-            case .otherError(let detail):
-                existingProbeCount += 1
-                AppLogger.debug("Full Disk Access probe warning for \(raw): \(detail)")
-                probes.append(
-                    FullDiskAccessProbe(path: expanded, state: .otherError, detail: detail)
-                )
-            }
-        }
-
-        if sawPermissionDenied {
-            return FullDiskAccessDiagnostics(granted: false, probes: probes)
-        }
-        if sawAccessible {
-            return FullDiskAccessDiagnostics(granted: true, probes: probes)
-        }
-        if existingProbeCount == 0 {
-            // No protected targets found to validate FDA. Be conservative: avoid false positives.
-            return FullDiskAccessDiagnostics(granted: false, probes: probes)
-        }
-        // Existing targets were present, but none were readable; treat as not granted.
-        return FullDiskAccessDiagnostics(granted: false, probes: probes)
+        let pathProbes = fileProbeDiagnostics()
+        return FullDiskAccessDiagnosticsEvaluator.evaluate(tmutilProbe: tmutil, pathProbes: pathProbes)
     }
 
     private func probeWithTmutil() -> ProbeResult {
@@ -205,5 +149,48 @@ public actor FullDiskAccessService {
             return nsError.code == EACCES || nsError.code == EPERM
         }
         return false
+    }
+
+    private func tmutilProbeDiagnostic() -> FullDiskAccessProbe {
+        switch probeWithTmutil() {
+        case .accessible:
+            return FullDiskAccessProbe(path: "tmutil isexcluded -X ~", state: .accessible, detail: nil)
+        case .permissionDenied(let detail):
+            return FullDiskAccessProbe(path: "tmutil isexcluded -X ~", state: .permissionDenied, detail: detail)
+        case .missing:
+            return FullDiskAccessProbe(path: "tmutil isexcluded -X ~", state: .missing, detail: nil)
+        case .otherError(let detail):
+            return FullDiskAccessProbe(path: "tmutil isexcluded -X ~", state: .otherError, detail: detail)
+        }
+    }
+
+    private func fileProbeDiagnostics() -> [FullDiskAccessProbe] {
+        var probes: [FullDiskAccessProbe] = []
+        probes.reserveCapacity(probePaths.count)
+
+        for raw in probePaths {
+            let expanded = expand(raw)
+            switch probe(path: expanded) {
+            case .accessible:
+                probes.append(
+                    FullDiskAccessProbe(path: expanded, state: .accessible, detail: nil)
+                )
+            case .permissionDenied(let detail):
+                probes.append(
+                    FullDiskAccessProbe(path: expanded, state: .permissionDenied, detail: detail)
+                )
+            case .missing:
+                probes.append(
+                    FullDiskAccessProbe(path: expanded, state: .missing, detail: nil)
+                )
+            case .otherError(let detail):
+                AppLogger.debug("Full Disk Access probe warning for \(raw): \(detail)")
+                probes.append(
+                    FullDiskAccessProbe(path: expanded, state: .otherError, detail: detail)
+                )
+            }
+        }
+
+        return probes
     }
 }

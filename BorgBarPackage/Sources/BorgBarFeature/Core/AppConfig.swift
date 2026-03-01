@@ -29,8 +29,10 @@ public struct RepoConfig: Codable, Sendable {
     public var sshKeyPath: String
     public var compression: String
     public var enableSparseHandling: Bool
+    public var maxRepositorySizeGiB: Int?
     public var includePaths: [String]
     public var userExcludePatterns: [String]
+    public var userExcludeIfPresentMarkers: [String]
     public var commonSenseExcludePatterns: [String]
     public var userExcludeDirectoryContents: [String]
     public var timeMachineExcludedPaths: [String]
@@ -45,8 +47,10 @@ public struct RepoConfig: Codable, Sendable {
         sshKeyPath: String,
         compression: String = "zstd,3",
         enableSparseHandling: Bool = true,
+        maxRepositorySizeGiB: Int? = nil,
         includePaths: [String],
         userExcludePatterns: [String],
+        userExcludeIfPresentMarkers: [String] = [],
         commonSenseExcludePatterns: [String] = RepoConfig.defaultCommonSenseExcludePatterns,
         userExcludeDirectoryContents: [String] = [],
         timeMachineExcludedPaths: [String] = [],
@@ -60,8 +64,10 @@ public struct RepoConfig: Codable, Sendable {
         self.sshKeyPath = sshKeyPath
         self.compression = compression
         self.enableSparseHandling = enableSparseHandling
+        self.maxRepositorySizeGiB = maxRepositorySizeGiB
         self.includePaths = includePaths
         self.userExcludePatterns = userExcludePatterns
+        self.userExcludeIfPresentMarkers = userExcludeIfPresentMarkers
         self.commonSenseExcludePatterns = commonSenseExcludePatterns
         self.userExcludeDirectoryContents = userExcludeDirectoryContents
         self.timeMachineExcludedPaths = timeMachineExcludedPaths
@@ -87,8 +93,10 @@ public struct RepoConfig: Codable, Sendable {
         case sshKeyPath
         case compression
         case enableSparseHandling
+        case maxRepositorySizeGiB
         case includePaths
         case userExcludePatterns
+        case userExcludeIfPresentMarkers
         case commonSenseExcludePatterns
         case userExcludeDirectoryContents
         case excludePatterns
@@ -107,6 +115,7 @@ public struct RepoConfig: Codable, Sendable {
         sshKeyPath = try container.decode(String.self, forKey: .sshKeyPath)
         compression = try container.decodeIfPresent(String.self, forKey: .compression) ?? "zstd,3"
         enableSparseHandling = try container.decodeIfPresent(Bool.self, forKey: .enableSparseHandling) ?? true
+        maxRepositorySizeGiB = try container.decodeIfPresent(Int.self, forKey: .maxRepositorySizeGiB)
         includePaths = try container.decodeIfPresent([String].self, forKey: .includePaths) ?? ["~"]
 
         if let currentUserPatterns = try container.decodeIfPresent([String].self, forKey: .userExcludePatterns) {
@@ -117,6 +126,7 @@ public struct RepoConfig: Codable, Sendable {
             let defaultSet = Set(RepoConfig.defaultCommonSenseExcludePatterns)
             userExcludePatterns = legacyPatterns.filter { !defaultSet.contains($0) }
         }
+        userExcludeIfPresentMarkers = try container.decodeIfPresent([String].self, forKey: .userExcludeIfPresentMarkers) ?? []
 
         commonSenseExcludePatterns = try container.decodeIfPresent([String].self, forKey: .commonSenseExcludePatterns)
             ?? RepoConfig.defaultCommonSenseExcludePatterns
@@ -140,8 +150,10 @@ public struct RepoConfig: Codable, Sendable {
         try container.encode(sshKeyPath, forKey: .sshKeyPath)
         try container.encode(compression, forKey: .compression)
         try container.encode(enableSparseHandling, forKey: .enableSparseHandling)
+        try container.encodeIfPresent(maxRepositorySizeGiB, forKey: .maxRepositorySizeGiB)
         try container.encode(includePaths, forKey: .includePaths)
         try container.encode(userExcludePatterns, forKey: .userExcludePatterns)
+        try container.encode(userExcludeIfPresentMarkers, forKey: .userExcludeIfPresentMarkers)
         try container.encode(commonSenseExcludePatterns, forKey: .commonSenseExcludePatterns)
         try container.encode(userExcludeDirectoryContents, forKey: .userExcludeDirectoryContents)
         try container.encode(timeMachineExcludedPaths, forKey: .timeMachineExcludedPaths)
@@ -179,15 +191,41 @@ public struct PreferencesConfig: Codable, Sendable {
     public var notifications: NotificationMode
     public var reachabilityProbe: Bool
     public var usePrivilegedSnapshotCommands: Bool
+    public var launchAtLogin: Bool
 
     public init(
         notifications: NotificationMode = .all,
         reachabilityProbe: Bool = true,
-        usePrivilegedSnapshotCommands: Bool = true
+        usePrivilegedSnapshotCommands: Bool = true,
+        launchAtLogin: Bool = false
     ) {
         self.notifications = notifications
         self.reachabilityProbe = reachabilityProbe
         self.usePrivilegedSnapshotCommands = usePrivilegedSnapshotCommands
+        self.launchAtLogin = launchAtLogin
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notifications
+        case reachabilityProbe
+        case usePrivilegedSnapshotCommands
+        case launchAtLogin
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notifications = try container.decodeIfPresent(NotificationMode.self, forKey: .notifications) ?? .all
+        reachabilityProbe = try container.decodeIfPresent(Bool.self, forKey: .reachabilityProbe) ?? true
+        usePrivilegedSnapshotCommands = try container.decodeIfPresent(Bool.self, forKey: .usePrivilegedSnapshotCommands) ?? true
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(notifications, forKey: .notifications)
+        try container.encode(reachabilityProbe, forKey: .reachabilityProbe)
+        try container.encode(usePrivilegedSnapshotCommands, forKey: .usePrivilegedSnapshotCommands)
+        try container.encode(launchAtLogin, forKey: .launchAtLogin)
     }
 }
 
@@ -214,6 +252,7 @@ public extension AppConfig {
             sshKeyPath: "~/.ssh/id_ed25519",
             includePaths: ["~"],
             userExcludePatterns: [],
+            userExcludeIfPresentMarkers: [".nobackup"],
             retention: .init()
         ),
         schedule: .init()

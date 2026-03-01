@@ -71,6 +71,11 @@ public struct MenuBarView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         statRow("Outcome", value: last.outcome.rawValue.capitalized)
                         statRow("Finished", value: last.finishedAt.formatted(date: .omitted, time: .shortened))
+                        Text(last.summary)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .font(.caption)
                     .frame(maxWidth: .infinity, alignment: .leading)

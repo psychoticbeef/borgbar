@@ -10,78 +10,67 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var passphraseStored = false
     @Published public var installingHelper = false
 
-    private let store: ConfigStore
-    private let installer: HelperInstallerService
-    private let keychain: KeychainService
-    private let fullDiskAccess: FullDiskAccessService
+    private let integration: SettingsIntegrationPort
     private let fullDiskAccessRequiredMessage: String
 
-    public init(
-        store: ConfigStore = ConfigStore(),
-        installer: HelperInstallerService = HelperInstallerService(),
-        keychain: KeychainService = KeychainService(),
-        fullDiskAccess: FullDiskAccessService = FullDiskAccessService(),
-        fullDiskAccessRequiredMessage: String = BorgBarModel.fullDiskAccessRequiredMessage
-    ) {
-        self.store = store
-        self.installer = installer
-        self.keychain = keychain
-        self.fullDiskAccess = fullDiskAccess
+    public init(fullDiskAccessRequiredMessage: String = BorgBarModel.fullDiskAccessRequiredMessage) {
+        self.integration = DefaultSettingsIntegrationPort()
+        self.fullDiskAccessRequiredMessage = fullDiskAccessRequiredMessage
+    }
+
+    init(integration: SettingsIntegrationPort, fullDiskAccessRequiredMessage: String = BorgBarModel.fullDiskAccessRequiredMessage) {
+        self.integration = integration
         self.fullDiskAccessRequiredMessage = fullDiskAccessRequiredMessage
     }
 
     public var timeMachineSubtitle: String {
-        let version = config.repo.timeMachineExclusionOSVersion ?? "not scanned yet"
-        if let scannedAt = config.repo.timeMachineExclusionScannedAt {
-            return "Auto-detected on macOS \(version) at \(scannedAt.formatted(date: .abbreviated, time: .shortened))."
-        }
-        if !fullDiskAccessGranted {
-            return "Auto-detection pending: Full Disk Access is required."
-        }
-        return "Auto-detection has not completed yet. Check Logs if this persists."
+        SettingsPresentationPolicy.timeMachineSubtitle(
+            osVersion: config.repo.timeMachineExclusionOSVersion,
+            scannedAt: config.repo.timeMachineExclusionScannedAt,
+            fullDiskAccessGranted: fullDiskAccessGranted
+        )
     }
 
     public var fullDiskAccessDiagnosticLines: [String] {
-        let relevant = fullDiskAccessDiagnostics.probes.filter {
-            $0.state == .permissionDenied || $0.state == .otherError
-        }
-        guard !relevant.isEmpty else {
-            return ["No denied probe path captured yet."]
-        }
-        return relevant.prefix(4).map { probe in
-            let detail = probe.detail ?? "no detail"
-            return "[\(probe.state.rawValue)] \(probe.path) (\(detail))"
-        }
+        SettingsPresentationPolicy.fullDiskAccessDiagnosticLines(from: fullDiskAccessDiagnostics)
     }
 
     public func load() async {
-        if let loaded = try? await store.load() {
+        if let loaded = try? await integration.loadConfig() {
             config = loaded
-            passphraseStored = await keychain.hasPassphrase(repoID: loaded.repo.id)
+            passphraseStored = await integration.hasPassphrase(repoID: loaded.repo.id)
+            config.preferences.launchAtLogin = await integration.launchAtLoginEnabled()
         }
-        helperHealth = await installer.healthStatus()
-        let diagnostics = await fullDiskAccess.diagnostics()
+        helperHealth = await integration.helperHealthStatus()
+        let diagnostics = await integration.fullDiskAccessDiagnostics()
         fullDiskAccessDiagnostics = diagnostics
         fullDiskAccessGranted = diagnostics.granted
     }
 
     public func refreshPassphraseStored() async {
-        passphraseStored = await keychain.hasPassphrase(repoID: config.repo.id)
+        passphraseStored = await integration.hasPassphrase(repoID: config.repo.id)
     }
 
     public func save() async -> Bool {
         do {
-            try await store.save(config)
-            return true
+            try await integration.saveConfig(config)
         } catch {
             errorMessage = error.localizedDescription
+            return false
+        }
+
+        do {
+            try await integration.setLaunchAtLogin(enabled: config.preferences.launchAtLogin)
+            return true
+        } catch {
+            errorMessage = "Settings saved, but launch-at-login update failed: \(error.localizedDescription)"
             return false
         }
     }
 
     public func savePassphrase(_ passphrase: String) async -> Bool {
         do {
-            try await keychain.setPassphrase(repoID: config.repo.id, passphrase: passphrase)
+            try await integration.setPassphrase(repoID: config.repo.id, passphrase: passphrase)
             passphraseStored = true
             return true
         } catch {
@@ -93,30 +82,41 @@ public final class SettingsViewModel: ObservableObject {
     public func installHelper() async throws {
         installingHelper = true
         errorMessage = nil
-        defer { installingHelper = false }
-        try await installer.install()
-        helperHealth = await installer.healthStatus()
+        do {
+            try await integration.installHelper()
+        } catch {
+            installingHelper = false
+            throw error
+        }
+        installingHelper = false
+        Task { [weak self] in
+            guard let self else { return }
+            let refreshed = await self.integration.helperHealthStatus()
+            self.helperHealth = refreshed
+        }
     }
 
     public func recheckFullDiskAccess(orchestrator: BackupOrchestrator?) async {
-        let diagnostics = await fullDiskAccess.diagnostics()
+        let diagnostics = await integration.fullDiskAccessDiagnostics()
         fullDiskAccessDiagnostics = diagnostics
         fullDiskAccessGranted = diagnostics.granted
         syncFullDiskAccessStatus(orchestrator: orchestrator)
     }
 
     public func openFullDiskAccessSettings() {
-        fullDiskAccess.openSystemSettings()
+        integration.openFullDiskAccessSettings()
     }
 
     public func syncFullDiskAccessStatus(orchestrator: BackupOrchestrator?) {
-        guard let orchestrator, !orchestrator.isRunning else { return }
-        if fullDiskAccessGranted {
-            if orchestrator.phase == .idle, orchestrator.statusMessage == fullDiskAccessRequiredMessage {
-                orchestrator.setIdleStatus("Idle")
-            }
-            return
+        guard let orchestrator else { return }
+        if let desired = SettingsPresentationPolicy.desiredIdleStatus(
+            isOrchestratorRunning: orchestrator.isRunning,
+            orchestratorPhase: orchestrator.phase,
+            orchestratorStatusMessage: orchestrator.statusMessage,
+            fullDiskAccessGranted: fullDiskAccessGranted,
+            fullDiskAccessRequiredMessage: fullDiskAccessRequiredMessage
+        ) {
+            orchestrator.setIdleStatus(desired)
         }
-        orchestrator.setIdleStatus(fullDiskAccessRequiredMessage)
     }
 }

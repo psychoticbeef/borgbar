@@ -8,7 +8,7 @@ public final class BorgBarModel: ObservableObject {
     public let orchestrator: BackupOrchestrator
     private let scheduler: BackupScheduler
     private let startupCoordinator: StartupCoordinator
-    private let fullDiskAccess = FullDiskAccessService()
+    private let integration: BorgBarModelIntegrationPort
 
     public init(
         orchestrator: BackupOrchestrator = BackupOrchestrator(),
@@ -17,7 +17,36 @@ public final class BorgBarModel: ObservableObject {
     ) {
         self.orchestrator = orchestrator
         self.scheduler = BackupScheduler(orchestrator: orchestrator, configStore: configStore)
-        self.startupCoordinator = startupCoordinator ?? StartupCoordinator(configStore: configStore)
+        let startupIntegration = DefaultStartupIntegrationPort(configStore: configStore)
+        self.startupCoordinator = startupCoordinator ?? StartupCoordinator(integration: startupIntegration)
+        self.integration = DefaultBorgBarModelIntegrationPort()
+
+        do {
+            try AppPaths().bootstrap()
+            AppLogger.info("BorgBar launched (\(Bundle.main.bundlePath))")
+        } catch {
+            AppLogger.error("Directory bootstrap failed: \(error.localizedDescription)")
+        }
+
+        Task {
+            await self.startupCoordinator.runStartup(
+                orchestrator: orchestrator,
+                fullDiskAccessRequiredMessage: Self.fullDiskAccessRequiredMessage
+            )
+        }
+    }
+
+    init(
+        orchestrator: BackupOrchestrator,
+        configStore: ConfigStore,
+        startupCoordinator: StartupCoordinator?,
+        integration: BorgBarModelIntegrationPort
+    ) {
+        self.orchestrator = orchestrator
+        self.scheduler = BackupScheduler(orchestrator: orchestrator, configStore: configStore)
+        let startupIntegration = DefaultStartupIntegrationPort(configStore: configStore)
+        self.startupCoordinator = startupCoordinator ?? StartupCoordinator(integration: startupIntegration)
+        self.integration = integration
 
         do {
             try AppPaths().bootstrap()
@@ -40,7 +69,7 @@ public final class BorgBarModel: ObservableObject {
 
     public func refreshFullDiskAccessStatusForUI() async {
         guard !orchestrator.isRunning else { return }
-        let diagnostics = await fullDiskAccess.diagnostics()
+        let diagnostics = await integration.fullDiskAccessDiagnostics()
         if diagnostics.granted {
             if orchestrator.phase == .idle, orchestrator.statusMessage == Self.fullDiskAccessRequiredMessage {
                 orchestrator.setIdleStatus("Idle")

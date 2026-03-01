@@ -13,31 +13,25 @@ public protocol SnapshotService: Sendable {
 }
 
 public actor LocalSnapshotService: SnapshotService {
-    private let privilegedRunner: PrivilegedCommandRunner
-    private let runner: CommandRunner
-    private let fileManager: FileManager
-    private let reuseStateStore: SnapshotReuseStateStore
-    private let now: @Sendable () -> Date
+    private let integration: LocalSnapshotIntegrationPort
 
     public init(
         privilegedRunner: PrivilegedCommandRunner = PrivilegedCommandRunner(),
         fileManager: FileManager = .default
     ) {
-        let paths = AppPaths(fileManager: fileManager)
-        self.privilegedRunner = privilegedRunner
-        self.runner = CommandRunner()
-        self.fileManager = fileManager
-        self.reuseStateStore = SnapshotReuseStateStore(
-            fileManager: fileManager,
-            stateFileURL: paths.appSupportDirectory.appendingPathComponent("snapshot-reuse-state.json")
+        self.integration = DefaultLocalSnapshotIntegrationPort(
+            privilegedRunner: privilegedRunner,
+            fileManager: fileManager
         )
-        self.now = Date.init
+    }
+
+    init(integration: LocalSnapshotIntegrationPort) {
+        self.integration = integration
     }
 
     public func createSnapshot(dailyTime: String) async throws -> SnapshotRef {
-        let mountPoint = "/tmp/borgbar-snapshot-\(UUID().uuidString.prefix(8))"
-        try fileManager.createDirectory(atPath: mountPoint, withIntermediateDirectories: true)
-        let referenceDate = now()
+        let mountPoint = try integration.createMountDirectory()
+        let referenceDate = integration.now()
 
         if let reusedDate = try await reusableSnapshotDate(referenceDate: referenceDate) {
             let reusedName = "com.apple.TimeMachine.\(reusedDate)"
@@ -45,7 +39,7 @@ public actor LocalSnapshotService: SnapshotService {
             return SnapshotRef(snapshotName: reusedName, snapshotDate: reusedDate, mountPoint: mountPoint)
         }
 
-        let createResult = try await privilegedRunner.run(executable: "/usr/bin/tmutil", arguments: ["localsnapshot"])
+        let createResult = try await integration.runPrivileged(executable: "/usr/bin/tmutil", arguments: ["localsnapshot"])
         guard createResult.exitCode == 0 else {
             throw BackupError.snapshotFailed(createResult.stderr.isEmpty ? createResult.stdout : createResult.stderr)
         }
@@ -61,7 +55,7 @@ public actor LocalSnapshotService: SnapshotService {
         }
 
         let snapshotName = "com.apple.TimeMachine.\(snapshotDate)"
-        try? reuseStateStore.save(snapshotDate: snapshotDate, createdAt: referenceDate, retryUntil: retryUntil)
+        try? integration.saveReuseState(snapshotDate: snapshotDate, createdAt: referenceDate, retryUntil: retryUntil)
         AppLogger.info("Created snapshot \(snapshotName), mountpoint prepared at \(mountPoint)")
         return SnapshotRef(snapshotName: snapshotName, snapshotDate: snapshotDate, mountPoint: mountPoint)
     }
@@ -80,7 +74,7 @@ public actor LocalSnapshotService: SnapshotService {
                     for options in optionSets {
                         var args = options
                         args.append(contentsOf: ["-s", snapshotName, source, snapshot.mountPoint])
-                        let result = try await privilegedRunner.run(
+                        let result = try await integration.runPrivileged(
                             executable: "/sbin/mount_apfs",
                             arguments: args
                         )
@@ -105,33 +99,33 @@ public actor LocalSnapshotService: SnapshotService {
     }
 
     public func deleteSnapshot(_ snapshot: SnapshotRef, deleteLocalSnapshot: Bool) async {
-        _ = try? await privilegedRunner.run(executable: "/sbin/umount", arguments: [snapshot.mountPoint])
+        _ = try? await integration.runPrivileged(executable: "/sbin/umount", arguments: [snapshot.mountPoint])
         if !deleteLocalSnapshot {
             AppLogger.debug("Preserving local snapshot \(snapshot.snapshotDate) after unsuccessful run")
-            try? fileManager.removeItem(atPath: snapshot.mountPoint)
+            try? integration.removeItem(atPath: snapshot.mountPoint)
             return
         }
 
-        if shouldKeepForReuse(snapshotDate: snapshot.snapshotDate, referenceDate: now()) {
+        if shouldKeepForReuse(snapshotDate: snapshot.snapshotDate, referenceDate: integration.now()) {
             AppLogger.debug("Keeping snapshot \(snapshot.snapshotDate) for reuse before scheduled cutoff")
-            try? fileManager.removeItem(atPath: snapshot.mountPoint)
+            try? integration.removeItem(atPath: snapshot.mountPoint)
             return
         }
 
-        _ = try? await privilegedRunner.run(executable: "/usr/bin/tmutil", arguments: ["deletelocalsnapshots", snapshot.snapshotDate])
-        if let state = reuseStateStore.load(), state.snapshotDate == snapshot.snapshotDate {
-            try? reuseStateStore.clear()
+        _ = try? await integration.runPrivileged(executable: "/usr/bin/tmutil", arguments: ["deletelocalsnapshots", snapshot.snapshotDate])
+        if let state = integration.loadReuseState(), state.snapshotDate == snapshot.snapshotDate {
+            try? integration.clearReuseState()
         }
-        try? fileManager.removeItem(atPath: snapshot.mountPoint)
+        try? integration.removeItem(atPath: snapshot.mountPoint)
     }
 
     public func cleanupStaleSnapshots() async {
         // Best-effort mount directory cleanup from interrupted runs.
-        if let entries = try? fileManager.contentsOfDirectory(atPath: "/tmp") {
+        if let entries = try? integration.temporaryEntries() {
             for entry in entries where entry.hasPrefix("borgbar-snapshot-") {
                 let path = "/tmp/\(entry)"
-                _ = try? await privilegedRunner.run(executable: "/sbin/umount", arguments: [path])
-                try? fileManager.removeItem(atPath: path)
+                _ = try? await integration.runPrivileged(executable: "/sbin/umount", arguments: [path])
+                try? integration.removeItem(atPath: path)
             }
         }
 
@@ -139,20 +133,20 @@ public actor LocalSnapshotService: SnapshotService {
     }
 
     private func reusableSnapshotDate(referenceDate: Date) async throws -> String? {
-        guard let state = reuseStateStore.load() else { return nil }
+        guard let state = integration.loadReuseState() else { return nil }
 
         if referenceDate >= state.retryUntil {
             let cutoffText = state.retryUntil.formatted(date: .abbreviated, time: .shortened)
             AppLogger.info("Tracked reusable snapshot \(state.snapshotDate) expired at \(cutoffText); deleting it before next run")
             await deleteTrackedSnapshot(snapshotDate: state.snapshotDate)
-            try? reuseStateStore.clear()
+            try? integration.clearReuseState()
             return nil
         }
 
         if let dates = try? await listSnapshotDates() {
             guard dates.contains(state.snapshotDate) else {
                 AppLogger.debug("Tracked reusable snapshot \(state.snapshotDate) no longer exists; clearing reuse state")
-                try? reuseStateStore.clear()
+                try? integration.clearReuseState()
                 return nil
             }
         } else {
@@ -190,7 +184,7 @@ public actor LocalSnapshotService: SnapshotService {
 
         var errors: [String] = []
         for args in argumentSets {
-            let result = try await privilegedRunner.run(
+            let result = try await integration.runPrivileged(
                 executable: "/usr/bin/tmutil",
                 arguments: args
             )
@@ -222,7 +216,7 @@ public actor LocalSnapshotService: SnapshotService {
     }
 
     private func resolveDevice(path: String) throws -> String {
-        let result = try runner.run(executable: "/bin/df", arguments: ["-P", path], timeoutSeconds: 8)
+        let result = try integration.runCommand(executable: "/bin/df", arguments: ["-P", path], timeoutSeconds: 8)
         guard result.exitCode == 0 else {
             throw BackupError.mountFailed("Unable to resolve device for \(path)")
         }
@@ -238,18 +232,18 @@ public actor LocalSnapshotService: SnapshotService {
     }
 
     private func shouldKeepForReuse(snapshotDate: String, referenceDate: Date) -> Bool {
-        guard let state = reuseStateStore.load() else {
+        guard let state = integration.loadReuseState() else {
             return false
         }
         return state.snapshotDate == snapshotDate && referenceDate < state.retryUntil
     }
 
     private func cleanupReuseStateIfNeeded() async {
-        guard let state = reuseStateStore.load() else { return }
-        let referenceDate = now()
+        guard let state = integration.loadReuseState() else { return }
+        let referenceDate = integration.now()
         if let dates = try? await listSnapshotDates(), !dates.contains(state.snapshotDate) {
             AppLogger.debug("Clearing reuse state; tracked snapshot \(state.snapshotDate) is missing")
-            try? reuseStateStore.clear()
+            try? integration.clearReuseState()
             return
         }
         guard referenceDate >= state.retryUntil else { return }
@@ -257,11 +251,11 @@ public actor LocalSnapshotService: SnapshotService {
         let cutoffText = state.retryUntil.formatted(date: .abbreviated, time: .shortened)
         AppLogger.info("Retry window ended at \(cutoffText); deleting tracked snapshot \(state.snapshotDate)")
         await deleteTrackedSnapshot(snapshotDate: state.snapshotDate)
-        try? reuseStateStore.clear()
+        try? integration.clearReuseState()
     }
 
     private func deleteTrackedSnapshot(snapshotDate: String) async {
-        _ = try? await privilegedRunner.run(
+        _ = try? await integration.runPrivileged(
             executable: "/usr/bin/tmutil",
             arguments: ["deletelocalsnapshots", snapshotDate]
         )

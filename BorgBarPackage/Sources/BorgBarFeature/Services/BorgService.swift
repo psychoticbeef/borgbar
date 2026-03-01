@@ -1,10 +1,20 @@
 import Foundation
 
+public struct RepositoryTrimSuggestion: Sendable {
+    public let targetBytes: Int64
+    public let currentBytes: Int64
+    public let excessBytes: Int64
+    public let estimatedFreedBytes: Int64
+    public let projectedBytes: Int64
+    public let archivesToDeleteOldestFirst: [String]
+    public let analyzedArchiveCount: Int
+    public let totalArchiveCount: Int
+}
+
 public actor BorgService {
     nonisolated private let runner: CommandRunner
     private static let createTimeoutSeconds: TimeInterval = 60 * 60 * 12
     private static let maintenanceTimeoutSeconds: TimeInterval = 60 * 60 * 2
-    private static let sparseChunkerParams = "fixed,1048576"
 
     public init(runner: CommandRunner = CommandRunner()) {
         self.runner = runner
@@ -17,47 +27,11 @@ public actor BorgService {
         onProgressLine: (@Sendable (String) -> Void)? = nil
     ) throws -> String {
         let archiveName = archiveNamePrefix() + "-\(timestamp())"
-        var args = [
-            "create",
-            "--progress",
-            "--stats",
-            "::\(archiveName)"
-        ]
-
-        args.append(contentsOf: ["--compression", config.repo.compression])
-        args.append(contentsOf: ["--checkpoint-interval", "600"])
-        if config.repo.enableSparseHandling {
-            args.append("--sparse")
-            args.append(contentsOf: ["--chunker-params", Self.sparseChunkerParams])
-        }
-
-        let patternExclusions = Array(Set(config.repo.commonSenseExcludePatterns + config.repo.userExcludePatterns)).sorted()
-        for pattern in patternExclusions {
-            args.append(contentsOf: ["--exclude", pattern])
-        }
-        for folder in Array(Set(config.repo.userExcludeDirectoryContents)).sorted() {
-            let absolute = expanded(folder)
-            let mountedFolder = snapshotMount + absolute
-            // Exclude contents while keeping the directory entry itself.
-            args.append(contentsOf: ["--exclude", "\(mountedFolder)/*"])
-            args.append(contentsOf: ["--exclude", "\(mountedFolder)/.[!.]*"])
-            args.append(contentsOf: ["--exclude", "\(mountedFolder)/..?*"])
-        }
-        let defaultPatterns = RepoConfig.defaultCommonSenseExcludePatterns
-        for folder in Array(Set(config.repo.timeMachineExcludedPaths)).sorted() {
-            let absolute = expanded(folder)
-            let mountedFolder = snapshotMount + absolute
-            guard !isCoveredByDefaultPatterns(path: mountedFolder, defaultPatterns: defaultPatterns) else {
-                continue
-            }
-            args.append(contentsOf: ["--exclude", mountedFolder])
-        }
-
-        for include in config.repo.includePaths {
-            let relative = NSString(string: include).expandingTildeInPath
-            let mounted = snapshotMount + relative
-            args.append(mounted)
-        }
+        let args = BorgCreateCommandBuilder.buildArguments(
+            config: config,
+            snapshotMount: snapshotMount,
+            archiveName: archiveName
+        )
 
         let env = borgEnvironment(config: config, passCommand: passCommand)
         let result = try runner.runStreaming(
@@ -96,9 +70,23 @@ public actor BorgService {
     }
 
     public func repositorySizeBytes(config: AppConfig, passCommand: String) throws -> Int64? {
-        let result = try runMaintenance(config: config, passCommand: passCommand, arguments: ["info"])
-        let output = combinedOutput(from: result)
-        return BorgStatsParser.parseRepositorySizeBytes(from: output)
+        // Prefer structured output to avoid fragile text parsing across Borg versions.
+        let jsonResult = try runMaintenance(config: config, passCommand: passCommand, arguments: ["info", "--json"])
+        if let value = BorgStatsParser.parseRepositorySizeBytesFromJSON(jsonResult.stdout) {
+            return value
+        }
+
+        // Fallback: parse text output (or combined stream) for older formats.
+        if let value = BorgStatsParser.parseRepositorySizeBytes(from: combinedOutput(from: jsonResult)) {
+            return value
+        }
+
+        let textResult = try runMaintenance(config: config, passCommand: passCommand, arguments: ["info"])
+        if let value = BorgStatsParser.parseRepositorySizeBytes(from: combinedOutput(from: textResult)) {
+            return value
+        }
+
+        throw BackupError.commandFailed("Could not parse repository size from borg info output")
     }
 
     public func breakLock(
@@ -111,6 +99,64 @@ public actor BorgService {
             passCommand: passCommand,
             arguments: ["break-lock"],
             timeoutSeconds: timeoutSeconds ?? Self.maintenanceTimeoutSeconds
+        )
+    }
+
+    public func suggestTrimToTarget(
+        config: AppConfig,
+        passCommand: String,
+        currentRepositoryBytes: Int64,
+        targetRepositoryBytes: Int64
+    ) throws -> RepositoryTrimSuggestion? {
+        guard targetRepositoryBytes > 0, currentRepositoryBytes > targetRepositoryBytes else {
+            return nil
+        }
+
+        let listResult = try runMaintenance(
+            config: config,
+            passCommand: passCommand,
+            arguments: ["list", "--json", "--sort-by", "timestamp"]
+        )
+        let archiveNames = parseArchiveNamesFromListJSON(listResult.stdout)
+        guard !archiveNames.isEmpty else {
+            return nil
+        }
+
+        let excessBytes = currentRepositoryBytes - targetRepositoryBytes
+        var estimatedFreedBytes: Int64 = 0
+        var selectedArchives: [String] = []
+
+        let analyzedNames = Array(archiveNames.prefix(50))
+        for archiveName in analyzedNames {
+            if estimatedFreedBytes >= excessBytes {
+                break
+            }
+            let infoResult = try runMaintenance(
+                config: config,
+                passCommand: passCommand,
+                arguments: ["info", "--json", "::\(archiveName)"]
+            )
+            guard let archiveDeduplicatedBytes = parseArchiveDeduplicatedBytesFromInfoJSON(infoResult.stdout) else {
+                continue
+            }
+            selectedArchives.append(archiveName)
+            estimatedFreedBytes += max(0, archiveDeduplicatedBytes)
+        }
+
+        guard !selectedArchives.isEmpty else {
+            return nil
+        }
+
+        let projectedBytes = max(0, currentRepositoryBytes - estimatedFreedBytes)
+        return RepositoryTrimSuggestion(
+            targetBytes: targetRepositoryBytes,
+            currentBytes: currentRepositoryBytes,
+            excessBytes: excessBytes,
+            estimatedFreedBytes: estimatedFreedBytes,
+            projectedBytes: projectedBytes,
+            archivesToDeleteOldestFirst: selectedArchives,
+            analyzedArchiveCount: analyzedNames.count,
+            totalArchiveCount: archiveNames.count
         )
     }
 
@@ -137,10 +183,6 @@ public actor BorgService {
 
     private func archiveNamePrefix() -> String {
         Host.current().localizedName?.replacingOccurrences(of: " ", with: "-") ?? "mac"
-    }
-
-    private func isCoveredByDefaultPatterns(path: String, defaultPatterns: [String]) -> Bool {
-        PathPatternMatcher.isCoveredByDefaultPatterns(path: path, defaultPatterns: defaultPatterns)
     }
 
     private func didCompleteArchive(in output: String) -> Bool {
@@ -176,5 +218,46 @@ public actor BorgService {
 
     private func errorOutput(from result: CommandResult) -> String {
         result.stderr.isEmpty ? result.stdout : result.stderr
+    }
+
+    private func parseArchiveNamesFromListJSON(_ output: String) -> [String] {
+        guard let data = output.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(BorgListPayload.self, from: data) else {
+            return []
+        }
+        return payload.archives.map(\.name)
+    }
+
+    private func parseArchiveDeduplicatedBytesFromInfoJSON(_ output: String) -> Int64? {
+        guard let data = output.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(BorgArchiveInfoPayload.self, from: data),
+              let first = payload.archives.first else {
+            return nil
+        }
+        return first.stats?.deduplicatedSize
+    }
+}
+
+private struct BorgListPayload: Decodable {
+    let archives: [BorgListArchive]
+}
+
+private struct BorgListArchive: Decodable {
+    let name: String
+}
+
+private struct BorgArchiveInfoPayload: Decodable {
+    let archives: [BorgArchiveInfo]
+}
+
+private struct BorgArchiveInfo: Decodable {
+    let stats: BorgArchiveInfoStats?
+}
+
+private struct BorgArchiveInfoStats: Decodable {
+    let deduplicatedSize: Int64?
+
+    private enum CodingKeys: String, CodingKey {
+        case deduplicatedSize = "deduplicated_size"
     }
 }
