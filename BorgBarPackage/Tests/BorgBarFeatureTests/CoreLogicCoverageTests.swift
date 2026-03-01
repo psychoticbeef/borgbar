@@ -72,6 +72,26 @@ import Testing
     #expect(BorgStatsParser.parseRepositorySizeBytes(from: output) == nil)
 }
 
+@Test func healthcheckPingPlannerBuildsExpectedEndpoints() {
+    let base = "https://hc-ping.com/12345678-aaaa-bbbb-cccc-1234567890ab"
+    #expect(
+        HealthcheckPingPlanner.endpoint(baseURLString: base, event: .success)?.absoluteString == base
+    )
+    #expect(
+        HealthcheckPingPlanner.endpoint(baseURLString: base, event: .start)?.absoluteString == "\(base)/start"
+    )
+    #expect(
+        HealthcheckPingPlanner.endpoint(baseURLString: base, event: .fail(message: nil))?.absoluteString == "\(base)/fail"
+    )
+    #expect(
+        HealthcheckPingPlanner.endpoint(
+            baseURLString: base,
+            event: .fail(message: "Backup failed")
+        )?.absoluteString == "\(base)/fail?msg=Backup%20failed"
+    )
+    #expect(HealthcheckPingPlanner.endpoint(baseURLString: "ssh://example", event: .success) == nil)
+}
+
 @Test func borgCreateCommandBuilderBuildsSparseAndExclusions() {
     var config = AppConfig.default
     config.repo.enableSparseHandling = true

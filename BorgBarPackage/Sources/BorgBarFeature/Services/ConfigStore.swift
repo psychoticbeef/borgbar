@@ -45,6 +45,15 @@ public actor ConfigStore {
         guard config.schedule.dailyTime.range(of: "^[0-2][0-9]:[0-5][0-9]$", options: .regularExpression) != nil else {
             throw BackupError.invalidConfig("schedule.dailyTime must be HH:mm")
         }
+        if config.preferences.healthchecksEnabled {
+            let raw = config.preferences.healthchecksPingURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else {
+                throw BackupError.invalidConfig("preferences.healthchecksPingURL is required when Healthchecks is enabled")
+            }
+            guard let url = URL(string: raw), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+                throw BackupError.invalidConfig("preferences.healthchecksPingURL must be a valid http(s) URL")
+            }
+        }
     }
 
     private func needsLegacyRewrite(data: Data) -> Bool {

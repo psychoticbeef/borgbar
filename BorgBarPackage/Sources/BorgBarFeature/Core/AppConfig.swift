@@ -192,17 +192,23 @@ public struct PreferencesConfig: Codable, Sendable {
     public var reachabilityProbe: Bool
     public var usePrivilegedSnapshotCommands: Bool
     public var launchAtLogin: Bool
+    public var healthchecksEnabled: Bool
+    public var healthchecksPingURL: String
 
     public init(
         notifications: NotificationMode = .all,
         reachabilityProbe: Bool = true,
         usePrivilegedSnapshotCommands: Bool = true,
-        launchAtLogin: Bool = false
+        launchAtLogin: Bool = false,
+        healthchecksEnabled: Bool = false,
+        healthchecksPingURL: String = ""
     ) {
         self.notifications = notifications
         self.reachabilityProbe = reachabilityProbe
         self.usePrivilegedSnapshotCommands = usePrivilegedSnapshotCommands
         self.launchAtLogin = launchAtLogin
+        self.healthchecksEnabled = healthchecksEnabled
+        self.healthchecksPingURL = healthchecksPingURL
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -210,6 +216,8 @@ public struct PreferencesConfig: Codable, Sendable {
         case reachabilityProbe
         case usePrivilegedSnapshotCommands
         case launchAtLogin
+        case healthchecksEnabled
+        case healthchecksPingURL
     }
 
     public init(from decoder: Decoder) throws {
@@ -218,6 +226,8 @@ public struct PreferencesConfig: Codable, Sendable {
         reachabilityProbe = try container.decodeIfPresent(Bool.self, forKey: .reachabilityProbe) ?? true
         usePrivilegedSnapshotCommands = try container.decodeIfPresent(Bool.self, forKey: .usePrivilegedSnapshotCommands) ?? true
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        healthchecksEnabled = try container.decodeIfPresent(Bool.self, forKey: .healthchecksEnabled) ?? false
+        healthchecksPingURL = try container.decodeIfPresent(String.self, forKey: .healthchecksPingURL) ?? ""
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -226,6 +236,8 @@ public struct PreferencesConfig: Codable, Sendable {
         try container.encode(reachabilityProbe, forKey: .reachabilityProbe)
         try container.encode(usePrivilegedSnapshotCommands, forKey: .usePrivilegedSnapshotCommands)
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
+        try container.encode(healthchecksEnabled, forKey: .healthchecksEnabled)
+        try container.encode(healthchecksPingURL, forKey: .healthchecksPingURL)
     }
 }
 

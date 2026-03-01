@@ -35,6 +35,7 @@ protocol BackupOrchestratorIntegrationPort: AnyObject {
     func appendHistory(_ record: BackupRunRecord) async throws
     func notify(title: String, body: String) async
     func updateWakeSchedule(dailyTime: String, enabled: Bool) async
+    func pingHealthcheck(config: AppConfig, event: HealthcheckPingEvent) async
 }
 
 struct BackupOrchestratorDependencies {
@@ -46,6 +47,7 @@ struct BackupOrchestratorDependencies {
     let notifications: NotificationService
     let wakeScheduler: WakeSchedulerService
     let sleepAssertion: SleepAssertionService
+    let healthchecks: HealthcheckService
 }
 
 @MainActor
@@ -58,6 +60,7 @@ final class DefaultBackupOrchestratorIntegrationPort: BackupOrchestratorIntegrat
     private let notifications: NotificationService
     private let wakeScheduler: WakeSchedulerService
     private let sleepAssertion: SleepAssertionService
+    private let healthchecks: HealthcheckService
 
     init(dependencies: BackupOrchestratorDependencies) {
         self.configStore = dependencies.configStore
@@ -68,6 +71,7 @@ final class DefaultBackupOrchestratorIntegrationPort: BackupOrchestratorIntegrat
         self.notifications = dependencies.notifications
         self.wakeScheduler = dependencies.wakeScheduler
         self.sleepAssertion = dependencies.sleepAssertion
+        self.healthchecks = dependencies.healthchecks
     }
 
     func loadConfig() async throws -> AppConfig {
@@ -175,5 +179,9 @@ final class DefaultBackupOrchestratorIntegrationPort: BackupOrchestratorIntegrat
 
     func updateWakeSchedule(dailyTime: String, enabled: Bool) async {
         await wakeScheduler.updateWakeSchedule(dailyTime: dailyTime, enabled: enabled)
+    }
+
+    func pingHealthcheck(config: AppConfig, event: HealthcheckPingEvent) async {
+        await healthchecks.pingIfConfigured(config: config, event: event)
     }
 }

@@ -40,7 +40,8 @@ public final class BackupOrchestrator: ObservableObject {
         historyStore: HistoryStore = HistoryStore(),
         notifications: NotificationService = NotificationService(),
         wakeScheduler: WakeSchedulerService = WakeSchedulerService(),
-        sleepAssertion: SleepAssertionService = SleepAssertionService()
+        sleepAssertion: SleepAssertionService = SleepAssertionService(),
+        healthchecks: HealthcheckService = HealthcheckService()
     ) {
         let dependencies = BackupOrchestratorDependencies(
             configStore: configStore,
@@ -50,7 +51,8 @@ public final class BackupOrchestrator: ObservableObject {
             historyStore: historyStore,
             notifications: notifications,
             wakeScheduler: wakeScheduler,
-            sleepAssertion: sleepAssertion
+            sleepAssertion: sleepAssertion,
+            healthchecks: healthchecks
         )
         self.integration = DefaultBackupOrchestratorIntegrationPort(dependencies: dependencies)
     }
@@ -164,6 +166,7 @@ public final class BackupOrchestrator: ObservableObject {
             let config = try await integration.loadConfig()
             loadedConfig = config
             try await integration.validateConfig(config)
+            sendHealthcheckPing(config: config, event: .start)
             try await runPreflightWithRetry(config: config)
 
             update(.creatingSnapshot, "Creating APFS snapshot")
@@ -215,6 +218,7 @@ public final class BackupOrchestrator: ObservableObject {
                     body: warningMessage,
                     isError: true
                 )
+                sendHealthcheckPing(config: config, event: .fail(message: warningMessage))
                 await refreshWakeSchedule(using: config)
             } else {
                 update(.success, "Backup completed")
@@ -234,6 +238,7 @@ public final class BackupOrchestrator: ObservableObject {
                     body: "Backup finished successfully.",
                     isError: false
                 )
+                sendHealthcheckPing(config: config, event: .success)
                 await refreshWakeSchedule(using: config)
             }
         } catch {
@@ -267,6 +272,7 @@ public final class BackupOrchestrator: ObservableObject {
                         body: "Backup was cancelled.",
                         isError: true
                     )
+                    sendHealthcheckPing(config: config, event: .fail(message: "Backup cancelled"))
                     await refreshWakeSchedule(using: config)
                 }
                 return
@@ -308,6 +314,7 @@ public final class BackupOrchestrator: ObservableObject {
                     body: error.localizedDescription,
                     isError: true
                 )
+                sendHealthcheckPing(config: config, event: .fail(message: error.localizedDescription))
                 await refreshWakeSchedule(using: config)
             }
         }
@@ -388,6 +395,12 @@ public final class BackupOrchestrator: ObservableObject {
             await integration.notify(title: title, body: body)
         case .all:
             await integration.notify(title: title, body: body)
+        }
+    }
+
+    private func sendHealthcheckPing(config: AppConfig, event: HealthcheckPingEvent) {
+        Task {
+            await integration.pingHealthcheck(config: config, event: event)
         }
     }
 

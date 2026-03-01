@@ -12,6 +12,20 @@ import Testing
     }
 }
 
+@Test func configValidationRequiresHealthchecksURLWhenEnabled() async throws {
+    let store = ConfigStore()
+    var config = AppConfig.default
+    config.preferences.healthchecksEnabled = true
+    config.preferences.healthchecksPingURL = ""
+
+    await #expect(throws: BackupError.self) {
+        try await store.validate(config)
+    }
+
+    config.preferences.healthchecksPingURL = "https://hc-ping.com/1234"
+    try await store.validate(config)
+}
+
 @Test func historyStoreKeepsMostRecentEntries() async throws {
     let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("BorgBarTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
