@@ -3,7 +3,8 @@ import Foundation
 protocol PreflightIntegrationPort: Sendable {
     func isExecutableFile(atPath path: String) -> Bool
     func fileExists(atPath path: String) -> Bool
-    func hasPassphrase(repoID: String) async -> Bool
+    func passphraseStorageAvailability(_ storage: PassphraseStorageMode) async -> PassphraseStorageAvailability
+    func hasPassphrase(repoID: String, storage: PassphraseStorageMode) async -> Bool
     func runReachabilityProbe(host: String, port: Int) throws -> CommandResult
 }
 
@@ -30,8 +31,12 @@ final class DefaultPreflightIntegrationPort: @unchecked Sendable, PreflightInteg
         fileManager.fileExists(atPath: path)
     }
 
-    func hasPassphrase(repoID: String) async -> Bool {
-        await keychain.hasPassphrase(repoID: repoID)
+    func passphraseStorageAvailability(_ storage: PassphraseStorageMode) async -> PassphraseStorageAvailability {
+        await keychain.availability(for: storage)
+    }
+
+    func hasPassphrase(repoID: String, storage: PassphraseStorageMode) async -> Bool {
+        await keychain.hasPassphrase(repoID: repoID, storage: storage)
     }
 
     func runReachabilityProbe(host: String, port: Int) throws -> CommandResult {

@@ -23,7 +23,7 @@ public actor BorgService {
     public func createArchive(
         config: AppConfig,
         snapshotMount: String,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         onProgressLine: (@Sendable (String) -> Void)? = nil
     ) throws -> String {
         let archiveName = archiveNamePrefix() + "-\(timestamp())"
@@ -33,7 +33,7 @@ public actor BorgService {
             archiveName: archiveName
         )
 
-        let env = borgEnvironment(config: config, passCommand: passCommand)
+        let env = borgEnvironment(config: config, passphraseAccess: passphraseAccess)
         let result = try runner.runStreaming(
             executable: expanded(config.paths.borgPath),
             arguments: args,
@@ -53,7 +53,7 @@ public actor BorgService {
         throw BackupError.commandFailed(result.stderr.isEmpty ? result.stdout : result.stderr)
     }
 
-    public func prune(config: AppConfig, passCommand: String) throws -> String {
+    public func prune(config: AppConfig, passphraseAccess: BorgPassphraseAccess) throws -> String {
         let r = config.repo.retention
         let args = [
             "prune",
@@ -62,16 +62,16 @@ public actor BorgService {
             "--keep-weekly", String(r.keepWeekly),
             "--keep-monthly", String(r.keepMonthly)
         ]
-        return try runMaintenanceOutput(config: config, passCommand: passCommand, arguments: args)
+        return try runMaintenanceOutput(config: config, passphraseAccess: passphraseAccess, arguments: args)
     }
 
-    public func compact(config: AppConfig, passCommand: String) throws -> String {
-        try runMaintenanceOutput(config: config, passCommand: passCommand, arguments: ["compact"])
+    public func compact(config: AppConfig, passphraseAccess: BorgPassphraseAccess) throws -> String {
+        try runMaintenanceOutput(config: config, passphraseAccess: passphraseAccess, arguments: ["compact"])
     }
 
-    public func repositorySizeBytes(config: AppConfig, passCommand: String) throws -> Int64? {
+    public func repositorySizeBytes(config: AppConfig, passphraseAccess: BorgPassphraseAccess) throws -> Int64? {
         // Prefer structured output to avoid fragile text parsing across Borg versions.
-        let jsonResult = try runMaintenance(config: config, passCommand: passCommand, arguments: ["info", "--json"])
+        let jsonResult = try runMaintenance(config: config, passphraseAccess: passphraseAccess, arguments: ["info", "--json"])
         if let value = BorgStatsParser.parseRepositorySizeBytesFromJSON(jsonResult.stdout) {
             return value
         }
@@ -81,7 +81,7 @@ public actor BorgService {
             return value
         }
 
-        let textResult = try runMaintenance(config: config, passCommand: passCommand, arguments: ["info"])
+        let textResult = try runMaintenance(config: config, passphraseAccess: passphraseAccess, arguments: ["info"])
         if let value = BorgStatsParser.parseRepositorySizeBytes(from: combinedOutput(from: textResult)) {
             return value
         }
@@ -91,12 +91,12 @@ public actor BorgService {
 
     public func breakLock(
         config: AppConfig,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         timeoutSeconds: TimeInterval? = nil
     ) throws {
         _ = try runMaintenance(
             config: config,
-            passCommand: passCommand,
+            passphraseAccess: passphraseAccess,
             arguments: ["break-lock"],
             timeoutSeconds: timeoutSeconds ?? Self.maintenanceTimeoutSeconds
         )
@@ -104,7 +104,7 @@ public actor BorgService {
 
     public func suggestTrimToTarget(
         config: AppConfig,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         currentRepositoryBytes: Int64,
         targetRepositoryBytes: Int64
     ) throws -> RepositoryTrimSuggestion? {
@@ -114,7 +114,7 @@ public actor BorgService {
 
         let listResult = try runMaintenance(
             config: config,
-            passCommand: passCommand,
+            passphraseAccess: passphraseAccess,
             arguments: ["list", "--json", "--sort-by", "timestamp"]
         )
         let archiveNames = parseArchiveNamesFromListJSON(listResult.stdout)
@@ -133,7 +133,7 @@ public actor BorgService {
             }
             let infoResult = try runMaintenance(
                 config: config,
-                passCommand: passCommand,
+                passphraseAccess: passphraseAccess,
                 arguments: ["info", "--json", "::\(archiveName)"]
             )
             guard let archiveDeduplicatedBytes = parseArchiveDeduplicatedBytesFromInfoJSON(infoResult.stdout) else {
@@ -164,12 +164,20 @@ public actor BorgService {
         runner.terminate()
     }
 
-    private func borgEnvironment(config: AppConfig, passCommand: String) -> [String: String] {
-        [
+    private func borgEnvironment(config: AppConfig, passphraseAccess: BorgPassphraseAccess) -> [String: String] {
+        var environment = [
             "BORG_REPO": config.repo.path,
-            "BORG_RSH": "ssh -i \(expanded(config.repo.sshKeyPath)) -o IdentitiesOnly=yes",
-            "BORG_PASSCOMMAND": passCommand
+            "BORG_RSH": "ssh -i \(expanded(config.repo.sshKeyPath)) -o IdentitiesOnly=yes"
         ]
+        switch passphraseAccess {
+        case .passCommand(let passCommand):
+            environment["BORG_PASSCOMMAND"] = passCommand
+        case .environmentVariable(let passphrase):
+            // Use direct env injection for synchronizable iCloud Keychain items because the
+            // `security` CLI is not a reliable query path for that storage.
+            environment["BORG_PASSPHRASE"] = passphrase
+        }
+        return environment
     }
 
     private func expanded(_ value: String) -> String {
@@ -189,21 +197,25 @@ public actor BorgService {
         output.contains("Archive fingerprint:") && output.contains("Time (end):")
     }
 
-    private func runMaintenanceOutput(config: AppConfig, passCommand: String, arguments: [String]) throws -> String {
-        let result = try runMaintenance(config: config, passCommand: passCommand, arguments: arguments)
+    private func runMaintenanceOutput(
+        config: AppConfig,
+        passphraseAccess: BorgPassphraseAccess,
+        arguments: [String]
+    ) throws -> String {
+        let result = try runMaintenance(config: config, passphraseAccess: passphraseAccess, arguments: arguments)
         return combinedOutput(from: result)
     }
 
     private func runMaintenance(
         config: AppConfig,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         arguments: [String],
         timeoutSeconds: TimeInterval? = nil
     ) throws -> CommandResult {
         let result = try runner.run(
             executable: expanded(config.paths.borgPath),
             arguments: arguments,
-            environment: borgEnvironment(config: config, passCommand: passCommand),
+            environment: borgEnvironment(config: config, passphraseAccess: passphraseAccess),
             timeoutSeconds: timeoutSeconds ?? Self.maintenanceTimeoutSeconds
         )
         guard result.exitCode == 0 else {

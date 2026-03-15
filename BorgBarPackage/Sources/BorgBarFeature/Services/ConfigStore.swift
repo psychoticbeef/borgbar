@@ -17,8 +17,7 @@ public actor ConfigStore {
 
         let data = try Data(contentsOf: paths.configFile)
         var config = try codec.decoder.decode(AppConfig.self, from: data)
-        if needsLegacyRewrite(data: data) || config.version < 4 {
-            config.version = max(config.version, 4)
+        if needsLegacyRewrite(data: data) || applyMigrations(to: &config) {
             try save(config)
             AppLogger.info("Migrated app-config.json to latest schema")
         }
@@ -61,5 +60,21 @@ public actor ConfigStore {
             return false
         }
         return text.contains("\"excludePatterns\"") || text.contains("\"excludeDirectoryContents\"")
+    }
+
+    private func applyMigrations(to config: inout AppConfig) -> Bool {
+        var migrated = false
+
+        if config.version < AppConfig.currentVersion {
+            config.version = AppConfig.currentVersion
+            migrated = true
+        }
+
+        if config.paths.borgPath == PathsConfig.legacyDefaultBorgPath {
+            config.paths.borgPath = PathsConfig.defaultBorgPath
+            migrated = true
+        }
+
+        return migrated
     }
 }

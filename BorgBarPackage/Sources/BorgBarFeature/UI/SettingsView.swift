@@ -93,6 +93,11 @@ public struct SettingsView: View {
                 await viewModel.refreshPassphraseStored()
             }
         }
+        .onChange(of: viewModel.config.preferences.passphraseStorage) { _, _ in
+            Task {
+                await viewModel.refreshPassphraseStored()
+            }
+        }
     }
 
     private func showAlert(title: String, message: String) {

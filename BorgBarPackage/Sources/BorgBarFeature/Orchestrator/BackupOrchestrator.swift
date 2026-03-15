@@ -86,9 +86,12 @@ public final class BackupOrchestrator: ObservableObject {
     public func cleanupRepositoryLockForTermination() async {
         guard !isRunning else { return }
         guard let config = try? await integration.loadConfig() else { return }
-        let passCommand = await integration.passCommand(repoID: config.repo.id)
         do {
-            try await integration.breakLock(config: config, passCommand: passCommand, timeoutSeconds: 20)
+            let passphraseAccess = try await integration.passphraseAccess(
+                repoID: config.repo.id,
+                storage: config.preferences.passphraseStorage
+            )
+            try await integration.breakLock(config: config, passphraseAccess: passphraseAccess, timeoutSeconds: 20)
             AppLogger.info("Termination cleanup: break-lock completed")
         } catch {
             // No lock is common; avoid surfacing this as a hard error during quit.
@@ -176,11 +179,14 @@ public final class BackupOrchestrator: ObservableObject {
             update(.mountingSnapshot, "Mounting snapshot read-only")
             try await integration.mountSnapshot(snapshot)
 
-            let passCommand = await integration.passCommand(repoID: config.repo.id)
+            let passphraseAccess = try await integration.passphraseAccess(
+                repoID: config.repo.id,
+                storage: config.preferences.passphraseStorage
+            )
             let maintenanceResult = try await runArchiveAndMaintenance(
                 config: config,
                 snapshot: snapshot,
-                passCommand: passCommand
+                passphraseAccess: passphraseAccess
             )
             createOutput = maintenanceResult.createOutput
             createSucceeded = true
@@ -407,7 +413,7 @@ public final class BackupOrchestrator: ObservableObject {
     private func runArchiveAndMaintenance(
         config: AppConfig,
         snapshot: SnapshotRef,
-        passCommand: String
+        passphraseAccess: BorgPassphraseAccess
     ) async throws -> ArchiveMaintenanceResult {
         update(.creatingArchive, "Creating archive")
         let progressHandler = makeProgressHandler()
@@ -415,7 +421,7 @@ public final class BackupOrchestrator: ObservableObject {
         let createOutput = try await createArchiveWithLockRecovery(
             config: config,
             snapshotMount: snapshot.mountPoint,
-            passCommand: passCommand,
+            passphraseAccess: passphraseAccess,
             progressHandler: progressHandler
         )
         let backupDuration = Date().timeIntervalSince(backupStartedAt)
@@ -425,7 +431,7 @@ public final class BackupOrchestrator: ObservableObject {
         let pruneStartedAt = Date()
         do {
             update(.pruning, "Applying retention")
-            try await integration.prune(config: config, passCommand: passCommand)
+            try await integration.prune(config: config, passphraseAccess: passphraseAccess)
         } catch {
             warningMessage = "Prune failed: \(error.localizedDescription)"
         }
@@ -434,7 +440,7 @@ public final class BackupOrchestrator: ObservableObject {
         let compactStartedAt = Date()
         do {
             update(.compacting, "Compacting repository")
-            try await integration.compact(config: config, passCommand: passCommand)
+            try await integration.compact(config: config, passphraseAccess: passphraseAccess)
         } catch {
             let compactMessage = "Compact failed: \(error.localizedDescription)"
             warningMessage = warningMessage.map { $0 + " | " + compactMessage } ?? compactMessage
@@ -443,7 +449,10 @@ public final class BackupOrchestrator: ObservableObject {
 
         var repositoryStoredBytes: Int64?
         do {
-            repositoryStoredBytes = try await integration.repositorySizeBytes(config: config, passCommand: passCommand)
+            repositoryStoredBytes = try await integration.repositorySizeBytes(
+                config: config,
+                passphraseAccess: passphraseAccess
+            )
         } catch {
             let infoMessage = "Repository size unavailable: \(error.localizedDescription)"
             warningMessage = warningMessage.map { $0 + " | " + infoMessage } ?? infoMessage
@@ -456,7 +465,7 @@ public final class BackupOrchestrator: ObservableObject {
                 do {
                     if let suggestion = try await integration.suggestTrimToTarget(
                         config: config,
-                        passCommand: passCommand,
+                        passphraseAccess: passphraseAccess,
                         currentRepositoryBytes: repositoryStoredBytes,
                         targetRepositoryBytes: targetBytes
                     ) {
@@ -514,14 +523,14 @@ public final class BackupOrchestrator: ObservableObject {
     private func createArchiveWithLockRecovery(
         config: AppConfig,
         snapshotMount: String,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         progressHandler: @escaping @Sendable (String) -> Void
     ) async throws -> String {
         do {
             return try await integration.createArchive(
                 config: config,
                 snapshotMount: snapshotMount,
-                passCommand: passCommand,
+                passphraseAccess: passphraseAccess,
                 onProgressLine: progressHandler
             )
         } catch {
@@ -529,11 +538,11 @@ public final class BackupOrchestrator: ObservableObject {
                 throw error
             }
             update(.creatingArchive, "Repository locked, attempting break-lock recovery")
-            try await integration.breakLock(config: config, passCommand: passCommand, timeoutSeconds: nil)
+            try await integration.breakLock(config: config, passphraseAccess: passphraseAccess, timeoutSeconds: nil)
             return try await integration.createArchive(
                 config: config,
                 snapshotMount: snapshotMount,
-                passCommand: passCommand,
+                passphraseAccess: passphraseAccess,
                 onProgressLine: progressHandler
             )
         }

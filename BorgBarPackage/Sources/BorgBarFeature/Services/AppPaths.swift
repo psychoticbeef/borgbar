@@ -1,6 +1,6 @@
 import Foundation
 
-public struct AppPaths {
+public struct AppPaths: Sendable {
     public let appSupportDirectory: URL
     public let logsDirectory: URL
     public let configFile: URL

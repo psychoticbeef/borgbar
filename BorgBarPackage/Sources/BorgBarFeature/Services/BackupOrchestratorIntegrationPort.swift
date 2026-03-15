@@ -4,7 +4,7 @@ import Foundation
 protocol BackupOrchestratorIntegrationPort: AnyObject {
     func loadConfig() async throws -> AppConfig
     func validateConfig(_ config: AppConfig) async throws
-    func passCommand(repoID: String) async -> String
+    func passphraseAccess(repoID: String, storage: PassphraseStorageMode) async throws -> BorgPassphraseAccess
     func runPreflight(
         config: AppConfig,
         onReachabilityRetry: (@Sendable (String) -> Void)?
@@ -15,19 +15,19 @@ protocol BackupOrchestratorIntegrationPort: AnyObject {
     func createArchive(
         config: AppConfig,
         snapshotMount: String,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         onProgressLine: (@Sendable (String) -> Void)?
     ) async throws -> String
-    func prune(config: AppConfig, passCommand: String) async throws
-    func compact(config: AppConfig, passCommand: String) async throws
-    func repositorySizeBytes(config: AppConfig, passCommand: String) async throws -> Int64?
+    func prune(config: AppConfig, passphraseAccess: BorgPassphraseAccess) async throws
+    func compact(config: AppConfig, passphraseAccess: BorgPassphraseAccess) async throws
+    func repositorySizeBytes(config: AppConfig, passphraseAccess: BorgPassphraseAccess) async throws -> Int64?
     func suggestTrimToTarget(
         config: AppConfig,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         currentRepositoryBytes: Int64,
         targetRepositoryBytes: Int64
     ) async throws -> RepositoryTrimSuggestion?
-    func breakLock(config: AppConfig, passCommand: String, timeoutSeconds: TimeInterval?) async throws
+    func breakLock(config: AppConfig, passphraseAccess: BorgPassphraseAccess, timeoutSeconds: TimeInterval?) async throws
     func terminateActiveProcess()
     func beginSleepAssertion(reason: String)
     func endSleepAssertion()
@@ -82,8 +82,8 @@ final class DefaultBackupOrchestratorIntegrationPort: BackupOrchestratorIntegrat
         try await configStore.validate(config)
     }
 
-    func passCommand(repoID: String) async -> String {
-        await keychain.passCommand(repoID: repoID)
+    func passphraseAccess(repoID: String, storage: PassphraseStorageMode) async throws -> BorgPassphraseAccess {
+        try await keychain.passphraseAccess(repoID: repoID, storage: storage)
     }
 
     func runPreflight(
@@ -112,45 +112,45 @@ final class DefaultBackupOrchestratorIntegrationPort: BackupOrchestratorIntegrat
     func createArchive(
         config: AppConfig,
         snapshotMount: String,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         onProgressLine: (@Sendable (String) -> Void)?
     ) async throws -> String {
         try await borg.createArchive(
             config: config,
             snapshotMount: snapshotMount,
-            passCommand: passCommand,
+            passphraseAccess: passphraseAccess,
             onProgressLine: onProgressLine
         )
     }
 
-    func prune(config: AppConfig, passCommand: String) async throws {
-        _ = try await borg.prune(config: config, passCommand: passCommand)
+    func prune(config: AppConfig, passphraseAccess: BorgPassphraseAccess) async throws {
+        _ = try await borg.prune(config: config, passphraseAccess: passphraseAccess)
     }
 
-    func compact(config: AppConfig, passCommand: String) async throws {
-        _ = try await borg.compact(config: config, passCommand: passCommand)
+    func compact(config: AppConfig, passphraseAccess: BorgPassphraseAccess) async throws {
+        _ = try await borg.compact(config: config, passphraseAccess: passphraseAccess)
     }
 
-    func repositorySizeBytes(config: AppConfig, passCommand: String) async throws -> Int64? {
-        try await borg.repositorySizeBytes(config: config, passCommand: passCommand)
+    func repositorySizeBytes(config: AppConfig, passphraseAccess: BorgPassphraseAccess) async throws -> Int64? {
+        try await borg.repositorySizeBytes(config: config, passphraseAccess: passphraseAccess)
     }
 
     func suggestTrimToTarget(
         config: AppConfig,
-        passCommand: String,
+        passphraseAccess: BorgPassphraseAccess,
         currentRepositoryBytes: Int64,
         targetRepositoryBytes: Int64
     ) async throws -> RepositoryTrimSuggestion? {
         try await borg.suggestTrimToTarget(
             config: config,
-            passCommand: passCommand,
+            passphraseAccess: passphraseAccess,
             currentRepositoryBytes: currentRepositoryBytes,
             targetRepositoryBytes: targetRepositoryBytes
         )
     }
 
-    func breakLock(config: AppConfig, passCommand: String, timeoutSeconds: TimeInterval?) async throws {
-        try await borg.breakLock(config: config, passCommand: passCommand, timeoutSeconds: timeoutSeconds)
+    func breakLock(config: AppConfig, passphraseAccess: BorgPassphraseAccess, timeoutSeconds: TimeInterval?) async throws {
+        try await borg.breakLock(config: config, passphraseAccess: passphraseAccess, timeoutSeconds: timeoutSeconds)
     }
 
     func terminateActiveProcess() {

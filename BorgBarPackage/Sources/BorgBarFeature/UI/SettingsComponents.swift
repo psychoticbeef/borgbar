@@ -212,16 +212,44 @@ struct SecuritySettingsSectionView: View {
             VStack(alignment: .leading, spacing: 8) {
                 SettingsSectionHeaderView(
                     title: "Repository Passphrase",
-                    subtitle: "Stored in macOS Keychain for repo id \(viewModel.config.repo.id)."
+                    subtitle: "Stored for repo id \(viewModel.config.repo.id)."
                 )
+                Picker("Passphrase Storage", selection: $viewModel.config.preferences.passphraseStorage) {
+                    ForEach(PassphraseStorageMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Text(viewModel.config.preferences.passphraseStorage.settingsDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let availabilityMessage = viewModel.passphraseStorageAvailabilityMessage,
+                   viewModel.config.preferences.passphraseStorage == .iCloudKeychain {
+                    Text(availabilityMessage)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                if viewModel.config.preferences.passphraseStorage == .iCloudKeychain {
+                    Text("After switching storage location, save the passphrase again to copy it into iCloud Keychain.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 HStack {
                     SecureField("Passphrase", text: $passphrase)
                     Button("Save Passphrase") {
                         onSavePassphrase()
                     }
-                    .disabled(viewModel.config.repo.id.isEmpty || passphrase.isEmpty)
+                    .disabled(
+                        viewModel.config.repo.id.isEmpty ||
+                        passphrase.isEmpty ||
+                        viewModel.passphraseStorageAvailabilityMessage != nil
+                    )
                 }
-                Text(viewModel.passphraseStored ? "Passphrase saved." : "No passphrase stored yet.")
+                Text(
+                    viewModel.passphraseStored
+                        ? "Passphrase saved in \(viewModel.config.preferences.passphraseStorage.keychainDisplayName)."
+                        : "No passphrase stored in \(viewModel.config.preferences.passphraseStorage.keychainDisplayName) yet."
+                )
                     .font(.caption)
                     .foregroundStyle(viewModel.passphraseStored ? .green : .secondary)
             }

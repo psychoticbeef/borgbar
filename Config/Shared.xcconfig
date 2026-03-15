@@ -33,9 +33,9 @@ CODE_SIGN_ENTITLEMENTS = Config/BorgBar.entitlements
 // ==========================================
 // Use stable Apple Development signing so macOS privacy grants (Full Disk Access)
 // persist across rebuilds for this bundle identifier.
-CODE_SIGN_STYLE = Manual
+CODE_SIGN_STYLE = Automatic
 DEVELOPMENT_TEAM = Q9QK5E2S4V
-CODE_SIGN_IDENTITY = Apple Development: d-arndt@posteo.de (K3M2A6WTSH)
+CODE_SIGN_IDENTITY = Apple Development
 
 // ==========================================
 // Warnings

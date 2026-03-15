@@ -361,8 +361,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				CODE_SIGN_IDENTITY = "Apple Development: d-arndt@posteo.de (K3M2A6WTSH)";
-				CODE_SIGN_STYLE = Manual;
+					CODE_SIGN_IDENTITY = "Apple Development";
+					CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = Q9QK5E2S4V;
 				EXECUTABLE_NAME = com.da.borgbar.helper;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -434,8 +434,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				CODE_SIGN_IDENTITY = "Apple Development: d-arndt@posteo.de (K3M2A6WTSH)";
-				CODE_SIGN_STYLE = Manual;
+					CODE_SIGN_IDENTITY = "Apple Development";
+					CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = Q9QK5E2S4V;
 				EXECUTABLE_NAME = com.da.borgbar.helper;
 				GENERATE_INFOPLIST_FILE = NO;

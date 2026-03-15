@@ -12,9 +12,40 @@ import Testing
     }
 }
 
+@Test func configStoreMigratesLegacyDefaultBorgPath() async throws {
+    let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("BorgBarConfigTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+
+    let support = tempRoot.appendingPathComponent("Application Support/BorgBar", isDirectory: true)
+    let logs = tempRoot.appendingPathComponent("Logs/BorgBar", isDirectory: true)
+    try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+
+    let paths = AppPathsForTests(appSupportDirectory: support, logsDirectory: logs)
+    let store = ConfigStore(paths: paths.base)
+
+    var legacyConfig = AppConfig.default
+    legacyConfig.version = 4
+    legacyConfig.paths.borgPath = PathsConfig.legacyDefaultBorgPath
+
+    let encoder = JSONStoreCodec().encoder
+    let data = try encoder.encode(legacyConfig)
+    try data.write(to: paths.base.configFile, options: .atomic)
+
+    let loaded = try await store.load()
+    #expect(loaded.version == AppConfig.currentVersion)
+    #expect(loaded.paths.borgPath == PathsConfig.defaultBorgPath)
+
+    let reloadedData = try Data(contentsOf: paths.base.configFile)
+    let decoded = try JSONStoreCodec().decoder.decode(AppConfig.self, from: reloadedData)
+    #expect(decoded.version == AppConfig.currentVersion)
+    #expect(decoded.paths.borgPath == PathsConfig.defaultBorgPath)
+}
+
 @Test func preferencesDefaultToNotificationsOffAndHealthchecksSuccessOnly() {
     let preferences = PreferencesConfig()
     #expect(preferences.notifications == .none)
+    #expect(preferences.passphraseStorage == .localKeychain)
     #expect(!preferences.healthchecksEnabled)
     #expect(!preferences.healthchecksPingOnStart)
     #expect(!preferences.healthchecksPingOnError)
@@ -33,6 +64,60 @@ import Testing
     preferences.healthchecksPingOnError = true
     #expect(preferences.shouldSendHealthcheck(for: .start))
     #expect(preferences.shouldSendHealthcheck(for: .fail(message: "oops")))
+}
+
+@Test func localKeychainAvailabilityDoesNotRequireSpecialEntitlements() {
+    let availability = KeychainService.availability(
+        for: .localKeychain,
+        entitlements: KeychainSigningEntitlements(
+            applicationIdentifier: nil,
+            teamIdentifier: nil,
+            keychainAccessGroups: []
+        )
+    )
+
+    #expect(availability == .available)
+}
+
+@Test func iCloudKeychainAvailabilityExplainsAdHocSigning() {
+    let availability = KeychainService.availability(
+        for: .iCloudKeychain,
+        entitlements: KeychainSigningEntitlements(
+            applicationIdentifier: nil,
+            teamIdentifier: nil,
+            keychainAccessGroups: []
+        )
+    )
+
+    #expect(!availability.isAvailable)
+    #expect(availability.message?.contains("ad hoc signed") == true)
+}
+
+@Test func iCloudKeychainAvailabilityRequiresAccessGroups() {
+    let availability = KeychainService.availability(
+        for: .iCloudKeychain,
+        entitlements: KeychainSigningEntitlements(
+            applicationIdentifier: "Q9QK5E2S4V.com.da.borgbar",
+            teamIdentifier: "Q9QK5E2S4V",
+            keychainAccessGroups: []
+        )
+    )
+
+    #expect(!availability.isAvailable)
+    #expect(availability.message?.contains("Keychain Access Groups") == true)
+}
+
+@Test func iCloudKeychainAvailabilitySucceedsWithTeamAndAccessGroup() {
+    let availability = KeychainService.availability(
+        for: .iCloudKeychain,
+        entitlements: KeychainSigningEntitlements(
+            applicationIdentifier: "Q9QK5E2S4V.com.da.borgbar",
+            teamIdentifier: "Q9QK5E2S4V",
+            keychainAccessGroups: ["Q9QK5E2S4V.com.da.borgbar"]
+        )
+    )
+
+    #expect(availability == .available)
 }
 
 @Test func configValidationRequiresHealthchecksURLWhenEnabled() async throws {

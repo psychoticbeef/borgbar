@@ -4,8 +4,9 @@ import Foundation
 protocol SettingsIntegrationPort: AnyObject {
     func loadConfig() async throws -> AppConfig
     func saveConfig(_ config: AppConfig) async throws
-    func hasPassphrase(repoID: String) async -> Bool
-    func setPassphrase(repoID: String, passphrase: String) async throws
+    func passphraseStorageAvailability(_ storage: PassphraseStorageMode) async -> PassphraseStorageAvailability
+    func hasPassphrase(repoID: String, storage: PassphraseStorageMode) async -> Bool
+    func setPassphrase(repoID: String, passphrase: String, storage: PassphraseStorageMode) async throws
     func helperHealthStatus() async -> HelperHealthStatus
     func installHelper() async throws
     func fullDiskAccessDiagnostics() async -> FullDiskAccessDiagnostics
@@ -44,12 +45,16 @@ final class DefaultSettingsIntegrationPort: SettingsIntegrationPort {
         try await store.save(config)
     }
 
-    func hasPassphrase(repoID: String) async -> Bool {
-        await keychain.hasPassphrase(repoID: repoID)
+    func passphraseStorageAvailability(_ storage: PassphraseStorageMode) async -> PassphraseStorageAvailability {
+        await keychain.availability(for: storage)
     }
 
-    func setPassphrase(repoID: String, passphrase: String) async throws {
-        try await keychain.setPassphrase(repoID: repoID, passphrase: passphrase)
+    func hasPassphrase(repoID: String, storage: PassphraseStorageMode) async -> Bool {
+        await keychain.hasPassphrase(repoID: repoID, storage: storage)
+    }
+
+    func setPassphrase(repoID: String, passphrase: String, storage: PassphraseStorageMode) async throws {
+        try await keychain.setPassphrase(repoID: repoID, passphrase: passphrase, storage: storage)
     }
 
     func helperHealthStatus() async -> HelperHealthStatus {

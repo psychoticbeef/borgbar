@@ -26,8 +26,17 @@ public enum PreflightService {
             throw BackupError.preflightFailed("SSH key not found at \(config.repo.sshKeyPath)")
         }
 
-        guard await integration.hasPassphrase(repoID: config.repo.id) else {
-            throw BackupError.preflightFailed("Keychain item borgbar-repo-\(config.repo.id) is missing")
+        let storageAvailability = await integration.passphraseStorageAvailability(config.preferences.passphraseStorage)
+        guard storageAvailability.isAvailable else {
+            throw BackupError.preflightFailed(
+                storageAvailability.message ?? "Selected passphrase storage is unavailable"
+            )
+        }
+
+        guard await integration.hasPassphrase(repoID: config.repo.id, storage: config.preferences.passphraseStorage) else {
+            throw BackupError.preflightFailed(
+                "Passphrase not found in \(config.preferences.passphraseStorage.keychainDisplayName) for repo \(config.repo.id)"
+            )
         }
 
         if config.preferences.reachabilityProbe, let endpoint = parseSSHEndpoint(config.repo.path) {

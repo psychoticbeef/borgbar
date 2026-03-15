@@ -8,6 +8,7 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var fullDiskAccessGranted = true
     @Published public var fullDiskAccessDiagnostics = FullDiskAccessDiagnostics(granted: true, probes: [])
     @Published public var passphraseStored = false
+    @Published public var passphraseStorageAvailabilityMessage: String?
     @Published public var installingHelper = false
 
     private let integration: SettingsIntegrationPort
@@ -38,7 +39,7 @@ public final class SettingsViewModel: ObservableObject {
     public func load() async {
         if let loaded = try? await integration.loadConfig() {
             config = loaded
-            passphraseStored = await integration.hasPassphrase(repoID: loaded.repo.id)
+            await refreshPassphraseStored()
             config.preferences.launchAtLogin = await integration.launchAtLoginEnabled()
         }
         helperHealth = await integration.helperHealthStatus()
@@ -48,10 +49,24 @@ public final class SettingsViewModel: ObservableObject {
     }
 
     public func refreshPassphraseStored() async {
-        passphraseStored = await integration.hasPassphrase(repoID: config.repo.id)
+        let availability = await integration.passphraseStorageAvailability(config.preferences.passphraseStorage)
+        passphraseStorageAvailabilityMessage = availability.message
+        guard availability.isAvailable else {
+            passphraseStored = false
+            return
+        }
+        passphraseStored = await integration.hasPassphrase(
+            repoID: config.repo.id,
+            storage: config.preferences.passphraseStorage
+        )
     }
 
     public func save() async -> Bool {
+        if let message = passphraseStorageAvailabilityMessage,
+           config.preferences.passphraseStorage == .iCloudKeychain {
+            errorMessage = message
+            return false
+        }
         do {
             try await integration.saveConfig(config)
         } catch {
@@ -70,8 +85,13 @@ public final class SettingsViewModel: ObservableObject {
 
     public func savePassphrase(_ passphrase: String) async -> Bool {
         do {
-            try await integration.setPassphrase(repoID: config.repo.id, passphrase: passphrase)
-            passphraseStored = true
+            try await integration.setPassphrase(
+                repoID: config.repo.id,
+                passphrase: passphrase,
+                storage: config.preferences.passphraseStorage
+            )
+            errorMessage = nil
+            await refreshPassphraseStored()
             return true
         } catch {
             errorMessage = error.localizedDescription

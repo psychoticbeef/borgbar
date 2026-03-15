@@ -1,6 +1,7 @@
 import Foundation
 
 public struct AppConfig: Codable, Sendable {
+    public static let currentVersion = 6
     public var version: Int
     public var repo: RepoConfig
     public var schedule: ScheduleConfig
@@ -8,7 +9,7 @@ public struct AppConfig: Codable, Sendable {
     public var paths: PathsConfig
 
     public init(
-        version: Int = 4,
+        version: Int = AppConfig.currentVersion,
         repo: RepoConfig,
         schedule: ScheduleConfig,
         preferences: PreferencesConfig = .init(),
@@ -192,6 +193,7 @@ public struct PreferencesConfig: Codable, Sendable {
     public var reachabilityProbe: Bool
     public var usePrivilegedSnapshotCommands: Bool
     public var launchAtLogin: Bool
+    public var passphraseStorage: PassphraseStorageMode
     public var healthchecksEnabled: Bool
     public var healthchecksPingOnStart: Bool
     public var healthchecksPingOnError: Bool
@@ -202,6 +204,7 @@ public struct PreferencesConfig: Codable, Sendable {
         reachabilityProbe: Bool = true,
         usePrivilegedSnapshotCommands: Bool = true,
         launchAtLogin: Bool = false,
+        passphraseStorage: PassphraseStorageMode = .localKeychain,
         healthchecksEnabled: Bool = false,
         healthchecksPingOnStart: Bool = false,
         healthchecksPingOnError: Bool = false,
@@ -211,6 +214,7 @@ public struct PreferencesConfig: Codable, Sendable {
         self.reachabilityProbe = reachabilityProbe
         self.usePrivilegedSnapshotCommands = usePrivilegedSnapshotCommands
         self.launchAtLogin = launchAtLogin
+        self.passphraseStorage = passphraseStorage
         self.healthchecksEnabled = healthchecksEnabled
         self.healthchecksPingOnStart = healthchecksPingOnStart
         self.healthchecksPingOnError = healthchecksPingOnError
@@ -222,6 +226,7 @@ public struct PreferencesConfig: Codable, Sendable {
         case reachabilityProbe
         case usePrivilegedSnapshotCommands
         case launchAtLogin
+        case passphraseStorage
         case healthchecksEnabled
         case healthchecksPingOnStart
         case healthchecksPingOnError
@@ -234,6 +239,7 @@ public struct PreferencesConfig: Codable, Sendable {
         reachabilityProbe = try container.decodeIfPresent(Bool.self, forKey: .reachabilityProbe) ?? true
         usePrivilegedSnapshotCommands = try container.decodeIfPresent(Bool.self, forKey: .usePrivilegedSnapshotCommands) ?? true
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        passphraseStorage = try container.decodeIfPresent(PassphraseStorageMode.self, forKey: .passphraseStorage) ?? .localKeychain
         healthchecksEnabled = try container.decodeIfPresent(Bool.self, forKey: .healthchecksEnabled) ?? false
         healthchecksPingOnStart = try container.decodeIfPresent(Bool.self, forKey: .healthchecksPingOnStart) ?? false
         healthchecksPingOnError = try container.decodeIfPresent(Bool.self, forKey: .healthchecksPingOnError) ?? false
@@ -246,6 +252,7 @@ public struct PreferencesConfig: Codable, Sendable {
         try container.encode(reachabilityProbe, forKey: .reachabilityProbe)
         try container.encode(usePrivilegedSnapshotCommands, forKey: .usePrivilegedSnapshotCommands)
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
+        try container.encode(passphraseStorage, forKey: .passphraseStorage)
         try container.encode(healthchecksEnabled, forKey: .healthchecksEnabled)
         try container.encode(healthchecksPingOnStart, forKey: .healthchecksPingOnStart)
         try container.encode(healthchecksPingOnError, forKey: .healthchecksPingOnError)
@@ -282,10 +289,45 @@ public enum NotificationMode: String, Codable, Sendable, CaseIterable, Hashable 
     }
 }
 
+public enum PassphraseStorageMode: String, Codable, Sendable, CaseIterable, Hashable {
+    case localKeychain
+    case iCloudKeychain
+
+    public var title: String {
+        switch self {
+        case .localKeychain:
+            return "This Mac"
+        case .iCloudKeychain:
+            return "iCloud"
+        }
+    }
+
+    public var keychainDisplayName: String {
+        switch self {
+        case .localKeychain:
+            return "local macOS Keychain"
+        case .iCloudKeychain:
+            return "iCloud Keychain"
+        }
+    }
+
+    public var settingsDescription: String {
+        switch self {
+        case .localKeychain:
+            return "Keeps the repository passphrase only on this Mac."
+        case .iCloudKeychain:
+            return "Syncs the repository passphrase through iCloud Keychain so another Mac signed into your Apple ID can restore the backup."
+        }
+    }
+}
+
 public struct PathsConfig: Codable, Sendable {
+    public static let legacyDefaultBorgPath = "/opt/homebrew/bin/borg"
+    public static let defaultBorgPath = "/run/current-system/sw/bin/borg"
+
     public var borgPath: String
 
-    public init(borgPath: String = "/opt/homebrew/bin/borg") {
+    public init(borgPath: String = PathsConfig.defaultBorgPath) {
         self.borgPath = borgPath
     }
 }
