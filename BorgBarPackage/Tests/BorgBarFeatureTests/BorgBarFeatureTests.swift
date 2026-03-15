@@ -12,6 +12,29 @@ import Testing
     }
 }
 
+@Test func preferencesDefaultToNotificationsOffAndHealthchecksSuccessOnly() {
+    let preferences = PreferencesConfig()
+    #expect(preferences.notifications == .none)
+    #expect(!preferences.healthchecksEnabled)
+    #expect(!preferences.healthchecksPingOnStart)
+    #expect(!preferences.healthchecksPingOnError)
+}
+
+@Test func preferencesHealthcheckRoutingDefaultsToSuccessOnlyWhenEnabled() {
+    var preferences = PreferencesConfig(
+        healthchecksEnabled: true,
+        healthchecksPingURL: "https://hc-ping.com/1234"
+    )
+    #expect(!preferences.shouldSendHealthcheck(for: .start))
+    #expect(preferences.shouldSendHealthcheck(for: .success))
+    #expect(!preferences.shouldSendHealthcheck(for: .fail(message: "oops")))
+
+    preferences.healthchecksPingOnStart = true
+    preferences.healthchecksPingOnError = true
+    #expect(preferences.shouldSendHealthcheck(for: .start))
+    #expect(preferences.shouldSendHealthcheck(for: .fail(message: "oops")))
+}
+
 @Test func configValidationRequiresHealthchecksURLWhenEnabled() async throws {
     let store = ConfigStore()
     var config = AppConfig.default

@@ -193,14 +193,18 @@ public struct PreferencesConfig: Codable, Sendable {
     public var usePrivilegedSnapshotCommands: Bool
     public var launchAtLogin: Bool
     public var healthchecksEnabled: Bool
+    public var healthchecksPingOnStart: Bool
+    public var healthchecksPingOnError: Bool
     public var healthchecksPingURL: String
 
     public init(
-        notifications: NotificationMode = .all,
+        notifications: NotificationMode = .none,
         reachabilityProbe: Bool = true,
         usePrivilegedSnapshotCommands: Bool = true,
         launchAtLogin: Bool = false,
         healthchecksEnabled: Bool = false,
+        healthchecksPingOnStart: Bool = false,
+        healthchecksPingOnError: Bool = false,
         healthchecksPingURL: String = ""
     ) {
         self.notifications = notifications
@@ -208,6 +212,8 @@ public struct PreferencesConfig: Codable, Sendable {
         self.usePrivilegedSnapshotCommands = usePrivilegedSnapshotCommands
         self.launchAtLogin = launchAtLogin
         self.healthchecksEnabled = healthchecksEnabled
+        self.healthchecksPingOnStart = healthchecksPingOnStart
+        self.healthchecksPingOnError = healthchecksPingOnError
         self.healthchecksPingURL = healthchecksPingURL
     }
 
@@ -217,16 +223,20 @@ public struct PreferencesConfig: Codable, Sendable {
         case usePrivilegedSnapshotCommands
         case launchAtLogin
         case healthchecksEnabled
+        case healthchecksPingOnStart
+        case healthchecksPingOnError
         case healthchecksPingURL
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        notifications = try container.decodeIfPresent(NotificationMode.self, forKey: .notifications) ?? .all
+        notifications = try container.decodeIfPresent(NotificationMode.self, forKey: .notifications) ?? .none
         reachabilityProbe = try container.decodeIfPresent(Bool.self, forKey: .reachabilityProbe) ?? true
         usePrivilegedSnapshotCommands = try container.decodeIfPresent(Bool.self, forKey: .usePrivilegedSnapshotCommands) ?? true
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         healthchecksEnabled = try container.decodeIfPresent(Bool.self, forKey: .healthchecksEnabled) ?? false
+        healthchecksPingOnStart = try container.decodeIfPresent(Bool.self, forKey: .healthchecksPingOnStart) ?? false
+        healthchecksPingOnError = try container.decodeIfPresent(Bool.self, forKey: .healthchecksPingOnError) ?? false
         healthchecksPingURL = try container.decodeIfPresent(String.self, forKey: .healthchecksPingURL) ?? ""
     }
 
@@ -237,14 +247,39 @@ public struct PreferencesConfig: Codable, Sendable {
         try container.encode(usePrivilegedSnapshotCommands, forKey: .usePrivilegedSnapshotCommands)
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
         try container.encode(healthchecksEnabled, forKey: .healthchecksEnabled)
+        try container.encode(healthchecksPingOnStart, forKey: .healthchecksPingOnStart)
+        try container.encode(healthchecksPingOnError, forKey: .healthchecksPingOnError)
         try container.encode(healthchecksPingURL, forKey: .healthchecksPingURL)
+    }
+
+    public func shouldSendHealthcheck(for event: HealthcheckPingEvent) -> Bool {
+        guard healthchecksEnabled else { return false }
+        switch event {
+        case .success:
+            return true
+        case .start:
+            return healthchecksPingOnStart
+        case .fail:
+            return healthchecksPingOnError
+        }
     }
 }
 
-public enum NotificationMode: String, Codable, Sendable, CaseIterable {
+public enum NotificationMode: String, Codable, Sendable, CaseIterable, Hashable {
     case all
     case errorsOnly
     case none
+
+    public var title: String {
+        switch self {
+        case .all:
+            return "All"
+        case .errorsOnly:
+            return "Errors Only"
+        case .none:
+            return "Off"
+        }
+    }
 }
 
 public struct PathsConfig: Codable, Sendable {

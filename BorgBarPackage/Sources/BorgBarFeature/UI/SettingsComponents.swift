@@ -122,6 +122,11 @@ struct RepositorySettingsSectionView: View {
             Text("If set, BorgBar estimates oldest archives to delete when repo size exceeds this target.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Picker("Notifications", selection: $viewModel.config.preferences.notifications) {
+                ForEach(NotificationMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
             Toggle("Launch BorgBar at Login", isOn: $viewModel.config.preferences.launchAtLogin)
             Toggle("Enable Sparse File Handling", isOn: $viewModel.config.repo.enableSparseHandling)
             Text("Uses borg --sparse with fixed chunking for safer sparse-file restores. Can reduce dedup efficiency for shifted files.")
@@ -132,7 +137,11 @@ struct RepositorySettingsSectionView: View {
             TextField("Healthchecks Ping URL", text: $viewModel.config.preferences.healthchecksPingURL)
                 .textFieldStyle(.roundedBorder)
                 .disabled(!viewModel.config.preferences.healthchecksEnabled)
-            Text("Use the Healthchecks ping URL. BorgBar sends /start at run begin, base URL on success, and /fail?msg=... on warning/failure.")
+            Toggle("Ping Healthchecks on Start", isOn: $viewModel.config.preferences.healthchecksPingOnStart)
+                .disabled(!viewModel.config.preferences.healthchecksEnabled)
+            Toggle("Ping Healthchecks on Error", isOn: $viewModel.config.preferences.healthchecksPingOnError)
+                .disabled(!viewModel.config.preferences.healthchecksEnabled)
+            Text("Default behavior is success-only. Enable start and error pings only if you want extra signal.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Toggle("Enable Wake Scheduling", isOn: $viewModel.config.schedule.wakeEnabled)

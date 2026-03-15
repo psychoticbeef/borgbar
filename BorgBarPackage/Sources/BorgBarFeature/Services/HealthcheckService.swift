@@ -10,7 +10,7 @@ public actor HealthcheckService {
     }
 
     public func pingIfConfigured(config: AppConfig, event: HealthcheckPingEvent) async {
-        guard config.preferences.healthchecksEnabled else { return }
+        guard config.preferences.shouldSendHealthcheck(for: event) else { return }
         guard let endpoint = HealthcheckPingPlanner.endpoint(
             baseURLString: config.preferences.healthchecksPingURL,
             event: event
